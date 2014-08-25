@@ -3,6 +3,9 @@
 
     //TODO: update screenshot when done
     //TODO: update github src link when done
+    //TODO: Show todo even if not set
+    //TODO: enable inline editing of addl fields on cards
+    //TODO: need to update attr defs and enable sorting tasks by workproduct.draganddroprank asc
     Ext.define('Rally.apps.taskboard.TaskBoardApp', {
         extend: 'Rally.app.TimeboxScopedApp',
         requires: [
@@ -15,23 +18,51 @@
         alias: 'widget.taskboardapp',
         appName: 'TaskBoard',
         scopeType: 'iteration',
+        supportsUnscheduled: false,
 
         onScopeChange: function() {
+            Ext.create('Rally.data.wsapi.artifact.Store', {
+                context: this.getContext().getDataContext(),
+                models: ['Defect', 'Defect Suite', 'Test Set', 'User Story'],
+                limit: Infinity,
+                filters: this._getQueryFilters(),
+                sorters: [
+                    {
+                        property: this.getContext().getWorkspace().WorkspaceConfiguration.DragDropRankingEnabled ?
+                            Rally.data.Ranker.RANK_FIELDS.DND :
+                            Rally.data.Ranker.RANK_FIELDS.MANUAL,
+                        direction: 'ASC'
+                    }
+                ],
+                autoLoad: true,
+                listeners: {
+                    load: this._onRowsLoaded,
+                    scope: this
+                },
+                fetch: ['FormattedID']
+            });
+        },
+
+        _onRowsLoaded: function(store) {
             var gridBoard = this.down('rallygridboard');
             if(gridBoard) {
                 gridBoard.destroy();
             }
-            this.add(this._getGridBoardConfig());
+            this.add(this._getGridBoardConfig(store.getRange()));
         },
 
-        _getGridBoardConfig: function() {
+        _getBoard: function() {
+            return this.down('rallygridboard').getGridOrBoard();
+        },
+
+        _getGridBoardConfig: function(rowRecords) {
             var context = this.getContext(),
                 modelNames = ['Task'];
             return {
                 xtype: 'rallygridboard',
                 stateful: false,
                 toggleState: 'board',
-                cardBoardConfig: this._getBoardConfig(),
+                cardBoardConfig: this._getBoardConfig(rowRecords),
                 plugins: [
                     'rallygridboardaddnew',
                     {
@@ -52,9 +83,9 @@
                     {
                         ptype: 'rallygridboardfieldpicker',
                         headerPosition: 'left',
-                        alwaysSelectedValues: ['FormattedID', 'Name', 'Owner', 'BlockedReason'],
+                        alwaysSelectedValues: ['FormattedID', 'Name', 'Owner'],
                         modelNames: modelNames,
-                        boardFieldDefaults: [] //todo: what fields to show on cards by default?
+                        boardFieldDefaults: ['Estimate', 'ToDo']
                     }
                 ],
                 context: context,
@@ -66,22 +97,59 @@
                     style: {
                         'float': 'left'
                     },
-                    recordTypes: ['User Story', 'Defect', 'Task']
-                    //todo: need to add an additional combobox to pick which story or defect to associate new task with
-                    //todo: when adding a defect or story need to add a new swimlane for that item
+                    recordTypes: ['Task', 'Defect', 'Defect Suite', 'Test Set', 'User Story'],
+                    additionalItemFields: [this._createWorkProductComboBox(rowRecords)],
+                    listeners: {
+                        recordtypechange: this._onAddNewRecordTypeChange,
+                        beforecreate: this._onAddNewBeforeCreate,
+                        create: this._onAddNewCreate,
+                        scope: this
+                    },
+                    minWidth: 600,
+                    ignoredRequiredFields: ['Name', 'Project', 'WorkProduct', 'State', 'TaskIndex', 'ScheduleState']
                 }
             };
         },
 
-        _getBoardConfig: function() {
+        _onAddNewBeforeCreate: function(addNew, record) {
+            if(record.isTask()) {
+                record.set('WorkProduct', this._workProductCombo.getValue());
+            } else {
+                record.set('Iteration', Rally.util.Ref.getRelativeUri(this.getContext().getTimeboxScope().getRecord()));
+            }
+        },
+
+        _onAddNewCreate: function(addNew, record) {
+            if(!record.isTask()) {
+                this._getBoard().addRow(record.getData());
+                this._workProductCombo.getStore().add(record);
+                this._workProductCombo.setValue(record);
+            }
+        },
+
+        _onAddNewRecordTypeChange: function(addNew, value) {
+            this._workProductCombo.setVisible(value === 'Task');
+        },
+
+        _createWorkProductComboBox: function(rowRecords) {
+            this._workProductCombo = Ext.create('Rally.ui.combobox.ComboBox', {
+                displayField: 'FormattedID',
+                valueField: '_ref',
+                store: Ext.create('Ext.data.Store', {
+                    data: _.invoke(rowRecords, 'getData'),
+                    fields: ['_ref', 'FormattedID']
+                })
+            });
+            return this._workProductCombo;
+        },
+
+        _getBoardConfig: function(rowRecords) {
             return {
                 xtype: 'rallycardboard',
                 attribute: 'State',
                 rowConfig: {
-                    field: 'WorkProduct'
-                    //TODO: figure out how to sort rows by rank via wsapi
-                    //TODO: work with alex to render data in the header for the work product rather than just the name.  new rowHeaderConfig?
-                    //TODO: should we allow moving tasks between work products?
+                    field: 'WorkProduct',
+                    values: _.pluck(rowRecords, 'data')
                 }
             };
         },
