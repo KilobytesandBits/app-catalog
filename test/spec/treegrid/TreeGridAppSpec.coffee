@@ -91,8 +91,8 @@ describe 'Rally.apps.treegrid.TreeGridApp', ->
   it 'should add the field picker plugin', ->
     @stub(Ext.state.Manager, 'get').returns null
     treeGridApp = @createTreeGridApp()
-    gridConfig = treeGridApp.down('#gridBoard')
-    gridPlugins = gridConfig.plugins
+    gridBoard = treeGridApp.down('#gridBoard')
+    gridPlugins = gridBoard.plugins
 
     expect(gridPlugins).not.toBeNull
     expect(gridPlugins.length).toBeGreaterThan 0
@@ -139,3 +139,36 @@ describe 'Rally.apps.treegrid.TreeGridApp', ->
       renderListener.call @treeGridApp, gridBoard, store: gridStore
 
       expect(loadSpy.callCount).toBe 0
+
+  it 'should apply a filter to the gridboard when model type changes', ->
+    treeGridApp = @createTreeGridApp()
+    gridBoard = treeGridApp.down '#gridBoard'
+    applyFilterSpy = @spy(gridBoard, 'applyCustomFilter')
+
+    gridBoard.fireEvent('modeltypeschange', gridBoard, [get: ()-> '/typedefinition/12345'])
+
+    @waitForCallback applyFilterSpy
+
+  it 'should ignore the afterrender event options when launching the app', ->
+    appCfg = _.extend(@getTreeGridAppConfig(true), {})
+    treeGridApp = Ext.create 'Rally.apps.treegrid.TreeGridApp', appCfg
+    modelNamesStub = @stub(treeGridApp, 'getModelNamesArray').returns(['PortfolioItem/Initiative'])
+    treeGridApp.fireEvent('afterrender')
+    expect(modelNamesStub).toHaveBeenCalledWith()
+
+
+  describe '#getModelNamesArray', ->
+    it 'should parse modelNames as comma-delimited string (which is how modelNames are saved when a preference)', ->
+      treeGridApp = @createTreeGridApp()
+      modelNamesArray = treeGridApp.getModelNamesArray 'CindyCrawford,HeidiKlum,YoMama'
+      expect(modelNamesArray).toEqual ['CindyCrawford','HeidiKlum','YoMama']
+
+    it 'should accept modelNames as an array', ->
+      treeGridApp = @createTreeGridApp()
+      modelNamesArray = treeGridApp.getModelNamesArray ['CindyCrawford','HeidiKlum','YoMama']
+      expect(modelNamesArray).toEqual ['CindyCrawford','HeidiKlum','YoMama']
+
+    it 'should use the modelNames setting if no argument passed in', ->
+      treeGridApp = @createTreeGridApp()
+      @stub(treeGridApp, 'getSetting').returns 'YoMama'
+      expect(treeGridApp.getModelNamesArray()).toEqual ['YoMama']
