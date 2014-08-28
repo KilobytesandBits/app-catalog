@@ -49,6 +49,10 @@
 			this.down("#mrcontainer").el.dom.innerHTML = ifr;
 		},
 
+		chartTypeFromSlug: function(slug) {
+			return slug.substring(slug.lastIndexOf('/') + 1);
+		},
+
 		render: function () {
 			this.callParent(arguments);
 
@@ -61,7 +65,7 @@
 			// still make use of toggles.?
 			var iframe = this.down('#mrcontainer').el.dom.firstChild;
 
-			var chartToLoad = this.appContainer.slug;
+			var chartToLoad = this.chartTypeFromSlug(this.appContainer.slug);
 
 			this.almBridge = Ext.create("Rally.apps.chartbuilder.EaselAlmBridgeApi", {
 				chartType : chartToLoad,

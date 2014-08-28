@@ -26,7 +26,7 @@ describe 'Rally.apps.chartbuilder.ChartPanelApp', ->
 
 			@app = Ext.create 'Rally.apps.chartbuilder.ChartPanelApp',
 				appContainer:
-					slug: 'theslug'
+					slug: config.slug || 'theslug'
 				context: context
 			, config
 
@@ -56,8 +56,7 @@ describe 'Rally.apps.chartbuilder.ChartPanelApp', ->
 			expect(iframe.almBridge.getChartType()).toBe 'theslug'
 
 	it 'ignores any path information in the slug', ->
-		@createApp().then (app) =>
-			app.appContainer.slug = 'xxx/yyy/theslug'
+		@createApp({ slug:'xxx/yyy/theslug' }).then (app) =>
 			iframe = @getIFrame(app)
 			expect(iframe.almBridge.getChartType()).toBe 'theslug'
 
