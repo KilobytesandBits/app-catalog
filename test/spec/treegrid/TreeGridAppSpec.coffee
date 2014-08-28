@@ -109,8 +109,10 @@ describe 'Rally.apps.treegrid.TreeGridApp', ->
 
   describe 'when including the custom filter plugin', ->
     beforeEach ->
+      Rally.clientmetrics.ClientMetricsBuilder.disabled = true
       @stub(Ext.state.Manager, 'get').returns true
       @treeGridApp = @createTreeGridApp
+        loadGridAfterStateRestore: false
         filterControlConfig:
           stateId: 'some-fake-test-state'
 
@@ -122,32 +124,13 @@ describe 'Rally.apps.treegrid.TreeGridApp', ->
 
     it 'should not load the grid on state restore', ->
       gridConfig = @treeGridApp.down('#gridBoard').gridConfig
-      gridStore = gridConfig.store
 
-      stateRestoreListener = gridConfig.listeners.staterestore.fn
-      loadSpy = @spy(gridStore, 'load')
-      stateRestoreListener.call @treeGridApp, getStore: -> gridStore
-
-      expect(loadSpy.callCount).toBe 0
+      expect(gridConfig.listeners.staterestore).toBeUndefined()
 
     it 'should not reload the grid on render', ->
-      gridBoard = @treeGridApp.down('#gridBoard')
-      gridStore = gridBoard.gridConfig.store
+      gridConfig = @treeGridApp.down('#gridBoard').gridConfig
 
-      renderListener = gridBoard.gridConfig.listeners.render.fn
-      loadSpy = @spy(gridStore, 'load')
-      renderListener.call @treeGridApp, gridBoard, store: gridStore
-
-      expect(loadSpy.callCount).toBe 0
-
-  it 'should apply a filter to the gridboard when model type changes', ->
-    treeGridApp = @createTreeGridApp()
-    gridBoard = treeGridApp.down '#gridBoard'
-    applyFilterSpy = @spy(gridBoard, 'applyCustomFilter')
-
-    gridBoard.fireEvent('modeltypeschange', gridBoard, [get: ()-> '/typedefinition/12345'])
-
-    @waitForCallback applyFilterSpy
+      expect(gridConfig.listeners.render).toBeUndefined()
 
   it 'should ignore the afterrender event options when launching the app', ->
     appCfg = _.extend(@getTreeGridAppConfig(true), {})

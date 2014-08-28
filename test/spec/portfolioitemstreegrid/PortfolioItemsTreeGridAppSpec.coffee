@@ -36,11 +36,32 @@ describe 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', ->
   it 'should add the PI type picker plugin', ->
     @stub(Ext.state.Manager, 'get').returns null
     appCfg = _.extend(@getPiTreeGridAppConfig(true), {modelNames: 'PortfolioItem/Project'})
-    treeGridApp = Ext.create 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', appCfg
+    piTreeGridApp = Ext.create 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', appCfg
 #   Yes I'm calling a testing private method. Multiple cases of inline creation of classes that return promises rendered us incapable of writing a better test.
-    gridPlugins = treeGridApp._getGridBoardPlugins()
+    gridPlugins = piTreeGridApp._getGridBoardPlugins()
 
     expect(gridPlugins).not.toBeNull
     expect(gridPlugins.length).toBeGreaterThan 0
     expect(_.find(gridPlugins, (plugin)->
       plugin.ptype == 'rallygridboardpitypecombobox')).toBeTruthy()
+
+  it 'should have filter configuration using lowest-level PI type', ->
+    @stub(Ext.state.Manager, 'get').returns null
+    appCfg = _.extend(@getPiTreeGridAppConfig(true), {modelNames: 'PortfolioItem/Project'})
+    piTreeGridApp = Ext.create 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', appCfg
+
+    mockTypeDefList =
+      getArray: ->
+        Ext.create.restore()
+        Deft.Promise.when [
+          {TypePath: 'CindyCrawford'},
+          {TypePath: 'HeidiKlum'},
+          {TypePath: 'ElleMcPherson'}
+        ]
+
+    @stub(Ext, 'create').withArgs('Rally.data.util.PortfolioItemTypeDefList').returns mockTypeDefList
+    piTreeGridApp.fireEvent('afterrender')
+    piTreeGridApp.launch()
+
+    filterConfig = piTreeGridApp.filterControlConfig
+    expect(filterConfig.modelNames).toEqual(['CindyCrawford'])

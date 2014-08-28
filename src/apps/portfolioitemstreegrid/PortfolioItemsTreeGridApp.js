@@ -8,8 +8,8 @@
           'Rally.ui.grid.plugin.TreeGridExpandedRowPersistence',
           'Rally.ui.gridboard.GridBoard',
           'Rally.ui.gridboard.plugin.GridBoardPortfolioItemTypeCombobox',
-          'Rally.data.util.PortfolioItemTypeDefArrayGenerator',
-          'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl'
+          'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
+          'Rally.data.util.PortfolioItemTypeDefList'
         ],
         alias: 'widget.portfolioitemstreegridapp',
         componentCls: 'pitreegrid',
@@ -23,21 +23,6 @@
             }
         },
 
-        constructor: function (config) {
-            this.callParent(arguments);
-
-            this._configureFilter();
-        },
-
-        _configureFilter: function() {
-            this.filterControlConfig = {
-                blacklistFields: ['PortfolioItemType', 'State'],
-                stateful: true,
-                stateId: this.getContext().getScopedStateId('portfolio-tree-custom-filter-button'),
-                whiteListFields: ['Milestones']
-            };
-        },
-
         launch: function() {
             if(!this.rendered) {
                 this.on('afterrender', this._getPortfolioItemTypeDefArray, this, {single: true});
@@ -46,13 +31,9 @@
             }
         },
 
-        _getTypeDefGenerator: function() {
-            return Ext.create('Rally.data.util.PortfolioItemTypeDefArrayGenerator')
-        },
-
         _getPortfolioItemTypeDefArray: function() {
-            this._getTypeDefGenerator()
-            .get(this.getContext().getDataContext())
+            return Ext.create('Rally.data.util.PortfolioItemTypeDefList')
+            .getArray(this.getContext().getDataContext())
             .then({
                 success: this._loadAppWithPortfolioItemType,
                 scope: this
@@ -61,10 +42,21 @@
 
         _loadAppWithPortfolioItemType: function(piTypeDefArray) {
             var allPiTypePaths = _.pluck(piTypeDefArray, 'TypePath');
-
-            this.piTyeDefArray = piTypeDefArray;
+            this._configureFilter(allPiTypePaths);
 
             this._loadApp(allPiTypePaths);
+        },
+
+        _configureFilter: function(allPiTypePaths) {
+            var initialPiTypePath = allPiTypePaths[0];
+
+            this.filterControlConfig = {
+                blacklistFields: ['PortfolioItemType', 'State'],
+                stateful: true,
+                stateId: this.getContext().getScopedStateId('portfolio-tree-custom-filter-button'),
+                whiteListFields: ['Milestones'],
+                modelNames: [initialPiTypePath]
+            };
         },
 
         _getGridBoardPlugins: function() {

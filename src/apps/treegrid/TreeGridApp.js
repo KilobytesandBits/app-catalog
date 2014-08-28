@@ -8,6 +8,7 @@
           'Rally.ui.grid.plugin.TreeGridExpandedRowPersistence',
           'Rally.ui.gridboard.GridBoard',
           'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
+          'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
           'Rally.data.PreferenceManager',
           'Rally.data.wsapi.TreeStoreBuilder'
         ],
@@ -76,11 +77,7 @@
                 cardBoardConfig: {},
                 gridConfig: this._getGridConfig(gridStore, context, gridStateId),
                 storeConfig: {},
-                height: this._getHeight(),
-                listeners: {
-                    modeltypeschange: this._onModelTypesChange,
-                    scope: this
-                }
+                height: this._getHeight()
             });
         },
 
@@ -188,11 +185,6 @@
             });
 
             return Ext.create('Rally.data.wsapi.TreeStoreBuilder').build(storeConfig);
-        },
-
-        _onModelTypesChange: function(gridboard, newTypes) {
-            var newTypePaths = _.invoke(newTypes, 'get', 'TypePath');
-            gridboard.applyCustomFilter({types: newTypePaths});
         },
 
         _onGridStateRestore: function(grid) {
