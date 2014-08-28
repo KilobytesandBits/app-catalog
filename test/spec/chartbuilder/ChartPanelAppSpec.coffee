@@ -55,6 +55,13 @@ describe 'Rally.apps.chartbuilder.ChartPanelApp', ->
 			iframe = @getIFrame(app)
 			expect(iframe.almBridge.getChartType()).toBe 'theslug'
 
+	it 'ignores any path information in the slug', ->
+		@createApp().then (app) =>
+			app.appContainer.slug = 'xxx/yyy/theslug'
+			iframe = @getIFrame(app)
+			expect(iframe.almBridge.getChartType()).toBe 'theslug'
+
+
 	it 'returns the appropriate workspace from the ALM Bridge', ->
 		@createApp().then (app) =>
 			iframe = @getIFrame(app)
