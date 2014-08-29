@@ -109,7 +109,6 @@ describe 'Rally.apps.treegrid.TreeGridApp', ->
 
   describe 'when including the custom filter plugin', ->
     beforeEach ->
-      Rally.clientmetrics.ClientMetricsBuilder.disabled = true
       @stub(Ext.state.Manager, 'get').returns true
       @treeGridApp = @createTreeGridApp
         loadGridAfterStateRestore: false
