@@ -55,8 +55,7 @@
                 stateful: true,
                 stateId: this.getContext().getScopedStateId('portfolio-tree-custom-filter-button'),
                 whiteListFields: ['Milestones'],
-                modelNames: [initialPiTypePath],
-                stateEvents: ['customfilter']
+                modelNames: [initialPiTypePath]
             };
         },
 

@@ -44,17 +44,7 @@ module.exports = (grunt) ->
   grunt.registerTask 'test:ci', 'Runs the tests in both firefox and chrome', ['sanity', 'test:conf', 'express:inline', 'webdriver_jasmine_runner:chrome', 'webdriver_jasmine_runner:firefox']
 
   _ = grunt.util._
-
-  specParam = grunt.option('spec') || grunt.option('specs')
-  specs = if specParam then specParam.split(',') else ['*']
-  specFileArray = []
-  specs.forEach (spec, idx, specArray) ->
-    spec = spec.replace(/(Spec|Test)$/, '').trim()
-    if grunt.file.expand("test/**/#{spec}+(Spec|Test).+(js|coffee)").length == 0
-      grunt.warn 'The specified spec/specs option ' + spec + ' does not match any test.'
-
-    specFileArray.push "test/gen/**/#{spec}Spec.js"
-
+  spec = (grunt.option('spec') || grunt.option('jsspec') || '*').replace(/(Spec|Test)$/, '')
   debug = grunt.option 'verbose' || false
   version = grunt.option 'version' || 'dev'
   maps = grunt.option 'maps' || false
@@ -65,6 +55,9 @@ module.exports = (grunt) ->
   if process.env.APPSDK_PATH
     appsdk_path = path.join process.env.APPSDK_PATH, 'rui'
     served_paths.unshift path.join(appsdk_path, '../..')
+
+  if spec != '*' and grunt.file.expand("test/**/#{spec}+(Spec|Test).+(js|coffee)").length == 0
+    grunt.warn 'The specified spec or jsspec option does not match any test.'
 
   appFiles = 'src/apps/**/*.js'
   specFiles = 'test/spec/**/*Spec.coffee'
@@ -154,7 +147,9 @@ module.exports = (grunt) ->
     jasmine:
       apps:
         options:
-          specs: specFileArray
+          specs: [
+            "test/gen/**/#{spec}Spec.js"
+          ]
           helpers: [
             "#{appsdk_path}/test/javascripts/helpers/**/*.js"
           ]
