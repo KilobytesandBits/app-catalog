@@ -8,7 +8,6 @@
         singleton: true,
         requires: [
             'Rally.apps.kanban.ColumnSettingsField',
-            'Rally.apps.common.RowSettingsField',
             'Rally.ui.combobox.FieldComboBox',
             'Rally.ui.picker.FieldPicker',
             'Rally.ui.CheckboxField',
@@ -69,9 +68,6 @@
                     margin: '10 0 0 0',
                     mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
                     readyEvent: 'ready',
-                    includeCustomFields: true,
-                    includeConstrainedNonCustomFields: false,
-                    includeObjectFields: false,
                     explicitFields: [
                         {name: 'Blocked', value: 'Blocked'},
                         {name: 'Owner', value: 'Owner'},
@@ -96,6 +92,29 @@
                         margin: '5 0 10 80'
                     }
                 },
+                {
+					xtype: 'rallynumberfield',
+					name: 'sla',
+					fieldLabel: 'Service Level Agreement'
+                },
+                {
+					xtype: 'rallycheckboxfield',
+					name: 'excludeWeekendsFromSLA',
+					fieldLabel: '',
+					boxLabel: 'Exclude Weekends from SLA',
+					config: {
+						margin: '5 0 10 80'
+					}
+                },
+				{
+					xtype: 'rallycheckboxfield',
+					name: 'showSLA',
+					fieldLabel: '',
+					boxLabel: 'Show SLA on Kanban Board',
+					config: {
+						margin: '5 0 10 80'
+					}
+				},                
                 {
                     type: 'query'
                 });

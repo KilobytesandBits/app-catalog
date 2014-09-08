@@ -8,6 +8,7 @@
             'Rally.apps.kanban.Column',
             'Rally.ui.gridboard.GridBoard',
             'Rally.ui.gridboard.plugin.GridBoardAddNew',
+
             'Rally.ui.gridboard.plugin.BoardPolicyDisplayable',
             'Rally.ui.cardboard.plugin.ColumnPolicy',
             'Rally.ui.cardboard.PolicyContainer',
@@ -26,6 +27,16 @@
         appName: 'Kanban',
 
         settingsScope: 'project',
+        items: [
+			{
+				xtype: 'container',
+				itemId: 'slaContainer'
+			},
+            {
+                xtype: 'container',
+                itemId: 'bodyContainer'
+            }
+        ],
 
         config: {
             defaultSettings: {
@@ -41,11 +52,14 @@
                 hideReleasedCards: false,
                 showCardAge: true,
                 cardAgeThreshold: 3,
+                excludeWeekendsFromSLA: true,
+                showSLA: false,
                 pageSize: 25
             }
         },
 
         launch: function() {
+
             Rally.data.ModelFactory.getModel({
                 type: 'UserStory',
                 success: this._onStoryModelRetrieved,
@@ -93,7 +107,7 @@
         },
 
         _shouldShowSwimLanes: function() {
-            return this.getContext().isFeatureEnabled('F5684_KANBAN_SWIM_LANES');
+            return true;//this.getContext().isFeatureEnabled('F5684_KANBAN_SWIM_LANES');
         },
 
         _shouldShowColumnLevelFieldPicker: function() {
@@ -113,7 +127,22 @@
                 cardboardConfig.columns = this._getColumnConfig(columnSetting);
             }
 
-            this.gridboard = this.add(this._getGridboardConfig(cardboardConfig));
+			//show team SLA on board
+			if (this.getSetting('sla') && this.getSetting('showSLA')) {
+				var slaPanel = Ext.create('Ext.form.Panel', {
+					items: [{
+						xtype: 'label',
+						text: 'Team Service Level Agreement: ' + this.getSetting('sla') + ' days',
+						cls: 'sla'
+					}]
+				});
+			
+				this.down('#slaContainer').add(slaPanel);
+			}
+
+			this.gridboard = this.down('#bodyContainer').add(this._getGridboardConfig(cardboardConfig));
+
+            this.cardboard = this.gridboard.getGridOrBoard();
         },
 
         _getGridboardConfig: function(cardboardConfig) {
@@ -132,15 +161,11 @@
                         filterControlConfig: {
                             blackListFields: [],
                             whiteListFields: [],
+                            context: context,
                             margin: '3 9 3 30',
                             modelNames: modelNames,
                             stateful: true,
                             stateId: context.getScopedStateId('kanban-custom-filter-button')
-                        },
-                        showOwnerFilter: true,
-                        ownerFilterControlConfig: {
-                            stateful: true,
-                            stateId: context.getScopedStateId('kanban-owner-filter')
                         }
                     },
                     {
@@ -151,6 +176,7 @@
                         modelNames: modelNames,
                         boardFieldDefaults: this.getSetting('cardFields').split(',')
                     },
+
                     {
                         ptype: 'rallyboardpolicydisplayable',
                         prefKey: 'kanbanAgreementsChecked',
@@ -188,10 +214,12 @@
                         ptype: 'rallycolumnpolicy',
                         app: this
                     }],
+
                     value: column,
                     columnHeaderConfig: {
                         headerTpl: column || 'None'
                     },
+
                     listeners: {
                         invalidfilter: {
                             fn: this._onInvalidFilter,
@@ -205,7 +233,9 @@
                 columns.push(columnConfig);
             }, this);
 
-            columns[columns.length - 1].hideReleasedCards = this.getSetting('hideReleasedCards');
+            columns[columns.length - 1].storeConfig = {
+                filters: this._getLastColumnFilter()
+            };
 
             return columns;
         },
@@ -221,6 +251,33 @@
             }
             return columnFields;
         },
+
+        //get the fields to show on the card as well as any fields that we want to ALWAYS fetch from the data store
+		_getFieldsForCard: function() {
+			var fields = (this._shouldShowColumnLevelFieldPicker()) ? [] : this.getSetting('cardFields').split(',');
+
+			//if we are calculating an SLA, we must always retrieve InProgressDate from the data store
+			//we have to create a hidden column for the card in order to fetch this value from the store
+			if (this.getSetting('sla')) {			
+				fields.push({
+					name: 'hiddenInProgressDate',
+					fetch: ['InProgressDate'],
+					visible: false
+				});
+				
+				//if we are calculating SLA and not grouping by ScheduleState, we need to retrieve the ScheduleState value from the data store
+				//otherwise we cannot accurately determine which cards to calculate the SLA for
+				if (this.getSetting('groupByField') !== 'ScheduleState') {
+					fields.push({
+						name: 'hiddenScheduleState',
+						fetch: ['ScheduleState'],
+						visible: false
+					});
+				}
+			}
+			
+			return fields;
+		},
 
         _onInvalidFilter: function() {
             Rally.ui.notify.Notifier.showError({
@@ -255,9 +312,17 @@
                 cardConfig: {
                     editable: true,
                     showIconMenus: true,
+					fields: this._getFieldsForCard(),
                     showAge: this.getSetting('showCardAge') ? this.getSetting('cardAgeThreshold') : -1,
-                    showBlockedReason: true
+                    showBlockedReason: true,
+                    listeners: {
+                        afterrender: this._showCardSLA,
+                        rerender: this._showCardSLA,
+                        scope: this
+
+                    }
                 },
+
                 storeConfig: {
                     context: this.getContext().getDataContext()
                 }
@@ -272,7 +337,85 @@
             }
             return config;
         },
+		
+		//Show Service Level Agreement status for a card (if configured to show)
+		_showCardSLA: function(card) {
+			var inProgressDate, daysInProgress, serviceLevelAgreement, remainingDaysForSLA, toolTipText, slaText, today;
+			
+			serviceLevelAgreement = this.getSetting('sla');
+			
+			//SLA has not been set
+			if (!serviceLevelAgreement) {
+				return;
+			}
+			
+			inProgressDate = card.record.get('InProgressDate');
+			today = new Date();
+			
+			//if the card is not in progress or is done, don't calculate SLA
+			if (!inProgressDate || (card.record.get('ScheduleState') === 'Accepted')) {
+				return;
+			}
+			
+			//get number of days in progress
+			daysInProgress = this._getNumberOfWorkDaysWithinRange(inProgressDate, today);
+			
+			//if we have a service level agreement that is at least 0, calculate SLA
+			if (serviceLevelAgreement >= 0) {
+				var statusContent, statusField, content, statusValue;
 
+				statusContent = card.el.query('.status-content')[0];
+				statusField = document.createElement('div');
+				statusField.className = 'field-content status-field';
+
+				statusValue = document.createElement('div');
+				statusValue.className = 'status-value age';
+				//statusValue.title = toolTipText;
+
+				content = document.createElement('span');
+			
+				remainingDaysForSLA = (serviceLevelAgreement - daysInProgress);
+
+				//no more days remaining
+				if (remainingDaysForSLA === 0) {
+					slaText = 'Due Today';
+					//toolTipText = slaText + ' <br/> In Progress for'  + daysInProgress + ' days. <br/> Started: ' + inProgressDate;
+				}
+				//violating the SLA
+				else if (remainingDaysForSLA < 0) {
+					slaText = 'Past Due by ' + Math.abs(remainingDaysForSLA) + ' days';
+					statusValue.className = 'status-value age sla-violation';
+					//toolTipText = slaText + ' <br/> In Progress for ' + daysInProgress + ' days. <br/> Started: ' + inProgressDate;
+				}
+				//days left before SLA
+				else {
+					slaText = 'Due in ' + remainingDaysForSLA + ' days';
+					//toolTipText = slaText + ' <br/> In Progress for ' + daysInProgress + ' days. <br/> Started: ' + inProgressDate;
+				}
+				content.appendChild(document.createTextNode(slaText));
+
+				statusValue.appendChild(content);
+				statusField.appendChild(statusValue);
+				statusContent.appendChild(statusField);
+			}
+        },
+
+		//calculate the number of days in progress; if excluding weekends, only Mon-Fri will be included in the calculation
+		_getNumberOfWorkDaysWithinRange: function(startDate, endDate) {
+			var numberOfDays = 0, includeWeekends = this.getSetting('excludeWeekendsFromSLA') === false;
+			var start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+            var end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+                       
+			while (start < end) {
+				if (includeWeekends || (start.getDay() > 0 && start.getDay() < 6)) {
+					numberOfDays++;
+				}
+				start.setDate(start.getDate()+1); 
+			}
+
+			return numberOfDays;
+		},
+		
         _getFilters: function() {
             var filters = [];
             if(this.getSetting('query')) {
@@ -283,6 +426,17 @@
             }
             return filters;
         },
+		
+		
+        _getLastColumnFilter: function() {
+            return this.getSetting('hideReleasedCards') ?
+                [
+                    {
+                        property: 'Release',
+                        value: null
+                    }
+                ] : [];
+        },
 
         _getColumnSetting: function() {
             var columnSetting = this.getSetting('columns');
@@ -290,6 +444,7 @@
         },
 
         _buildReportConfig: function(report) {
+
             var reportConfig = {
                 report: report,
                 work_items: this._getWorkItemTypesForChart()
@@ -369,7 +524,9 @@
         _onBoardLoad: function() {
             this._publishContentUpdated();
             this.setLoading(false);
+
         },
+
 
         _onBeforeCreate: function(addNew, record, params) {
             Ext.apply(params, {
@@ -382,7 +539,7 @@
         _onBeforeEditorShow: function(addNew, params) {
             params.rankTo = 'BOTTOM';
             params.rankScope = 'BACKLOG';
-            params.iteration = 'u';
+
 
             var groupByFieldName = this.groupByField.name;
 
@@ -414,6 +571,7 @@
 
         _publishContentUpdatedNoDashboardLayout: function() {
             this.fireEvent('contentupdated', {dashboardLayout: false});
+
         }
     });
 })();
