@@ -252,33 +252,6 @@
             return columnFields;
         },
 
-        //get the fields to show on the card as well as any fields that we want to ALWAYS fetch from the data store
-		_getFieldsForCard: function() {
-			var fields = (this._shouldShowColumnLevelFieldPicker()) ? [] : this.getSetting('cardFields').split(',');
-
-			//if we are calculating an SLA, we must always retrieve InProgressDate from the data store
-			//we have to create a hidden column for the card in order to fetch this value from the store
-			if (this.getSetting('sla')) {			
-				fields.push({
-					name: 'hiddenInProgressDate',
-					fetch: ['InProgressDate'],
-					visible: false
-				});
-				
-				//if we are calculating SLA and not grouping by ScheduleState, we need to retrieve the ScheduleState value from the data store
-				//otherwise we cannot accurately determine which cards to calculate the SLA for
-				if (this.getSetting('groupByField') !== 'ScheduleState') {
-					fields.push({
-						name: 'hiddenScheduleState',
-						fetch: ['ScheduleState'],
-						visible: false
-					});
-				}
-			}
-			
-			return fields;
-		},
-
         _onInvalidFilter: function() {
             Rally.ui.notify.Notifier.showError({
                 message: 'Invalid query: ' + this.getSetting('query')
@@ -312,7 +285,6 @@
                 cardConfig: {
                     editable: true,
                     showIconMenus: true,
-					fields: this._getFieldsForCard(),
                     showAge: this.getSetting('showCardAge') ? this.getSetting('cardAgeThreshold') : -1,
                     showBlockedReason: true,
                     listeners: {
@@ -324,7 +296,8 @@
                 },
 
                 storeConfig: {
-                    context: this.getContext().getDataContext()
+                    context: this.getContext().getDataContext(),
+                    fetch: ["InProgressDate", "ScheduleState"]
                 }
             };
             if (this._shouldShowSwimLanes() && this.getSetting('showRows')) {
