@@ -39,8 +39,8 @@
                 itemId: 'bodyContainer'
             }
         ],
-        autoScroll: false,
-        layout: 'fit',
+        //autoScroll: false,
+        //layout: 'fit',
         config: {
             defaultSettings: {
                 groupByField: 'ScheduleState',
