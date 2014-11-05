@@ -315,10 +315,7 @@ describe 'Rally.apps.kanban.KanbanApp', ->
       expect(storeConfig.filters[0].toString()).toBe query
       expect(storeConfig.filters[1].toString()).toBe timeboxScope.getQueryFilter().toString()
 
-  describe 'Swim Lanes is toggled ON', ->
-    beforeEach ->
-      @stub(Rally.app.Context.prototype, 'isFeatureEnabled').withArgs('F5684_KANBAN_SWIM_LANES').returns(true)
-
+  describe 'Swim Lanes', ->
     it 'should include rows configuration with rowsField when showRows setting is true', ->
       @createApp(showRows: true, rowsField: 'Owner').then =>
         expect(@cardboard.rowConfig.field).toBe 'Owner'
@@ -328,27 +325,14 @@ describe 'Rally.apps.kanban.KanbanApp', ->
       @createApp(showRows: false, rowsField: 'Owner').then =>
         expect(@cardboard.rowConfig).toBeNull()
 
-    it 'passes shouldShowRowSettings correctly', ->
+  describe 'Fixed Header', ->
+    it 'should add the fixed header plugin', ->
       @createApp().then =>
-        getFieldsSpy = @spy Rally.apps.kanban.Settings, 'getFields'
-        @app.getSettingsFields()
-        expect(getFieldsSpy.callCount).toBe 1
-        expect(getFieldsSpy.getCall(0).args[0].shouldShowRowSettings).toBe true
+        expect(@getPlugin('rallyfixedheadercardboard', @cardboard)).toBeDefined()
 
-  describe 'Swim Lanes is toggled OFF', ->
-    beforeEach ->
-      @stub(Rally.app.Context.prototype, 'isFeatureEnabled').withArgs('F5684_KANBAN_SWIM_LANES').returns(false)
-
-    it 'should not include rows configuration', ->
-      @createApp(showRows: true, rowsField: 'Owner').then =>
-        expect(@cardboard.rowConfig).toBeNull()
-
-    it 'passes shouldShowRowSettings correctly', ->
+    it 'should set the initial gridboard height to the app height', ->
       @createApp().then =>
-        getFieldsSpy = @spy Rally.apps.kanban.Settings, 'getFields'
-        @app.getSettingsFields()
-        expect(getFieldsSpy.callCount).toBe 1
-        expect(getFieldsSpy.getCall(0).args[0].shouldShowRowSettings).toBe false
+        expect(@app.down('rallygridboard').getHeight()).toBe @app.getHeight()
 
   describe 'plugins', ->
 
@@ -374,7 +358,6 @@ describe 'Rally.apps.kanban.KanbanApp', ->
           expect(plugin.headerPosition).toBe 'left'
           expect(plugin.modelNames).toEqual ['User Story', 'Defect']
           expect(plugin.boardFieldDefaults).toEqual @app.getSetting('cardFields').split(',')
-          expect(plugin.alwaysSelectedValues).toEqual ['FormattedID', 'Name', 'Owner', 'BlockedReason']
 
   helpers
     createApp: (settings = {}, options = {}, context = {}) ->
@@ -392,6 +375,7 @@ describe 'Rally.apps.kanban.KanbanApp', ->
         )
         settings: settings
         renderTo: options.renderTo || 'testDiv'
+        height: 400
 
       @waitForComponentReady(@app).then =>
         @cardboard = @app.down('rallycardboard')
@@ -409,7 +393,6 @@ describe 'Rally.apps.kanban.KanbanApp', ->
       model.prototype.fields.remove field
       expect(model.getField(field.name)).toBeUndefined
 
-    getPlugin: (xtype) ->
-      gridBoard = @app.down 'rallygridboard'
-      _.find gridBoard.plugins, (plugin) ->
+    getPlugin: (xtype, cmp = @app.down('rallygridboard')) ->
+      _.find cmp.plugins, (plugin) ->
         plugin.ptype == xtype

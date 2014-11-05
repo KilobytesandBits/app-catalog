@@ -17,7 +17,8 @@
             'Rally.ui.report.StandardReport',
             'Rally.clientmetrics.ClientMetricsRecordable',
             'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
-            'Rally.ui.gridboard.plugin.GridBoardFieldPicker'
+            'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
+            'Rally.ui.cardboard.plugin.FixedHeader'
         ],
         mixins: [
             'Rally.clientmetrics.ClientMetricsRecordable'
@@ -27,6 +28,7 @@
         appName: 'Kanban',
 
         settingsScope: 'project',
+
         items: [
 			{
 				xtype: 'container',
@@ -37,7 +39,8 @@
                 itemId: 'bodyContainer'
             }
         ],
-
+        autoScroll: false,
+        layout: 'fit',
         config: {
             defaultSettings: {
                 groupByField: 'ScheduleState',
@@ -90,8 +93,7 @@
         getSettingsFields: function() {
             return Rally.apps.kanban.Settings.getFields({
                 shouldShowColumnLevelFieldPicker: this._shouldShowColumnLevelFieldPicker(),
-                defaultCardFields: this.getSetting('cardFields'),
-                shouldShowRowSettings: this._shouldShowSwimLanes()
+                defaultCardFields: this.getSetting('cardFields')
             });
         },
 
@@ -153,6 +155,7 @@
                 stateful: false,
                 toggleState: 'board',
                 cardBoardConfig: cardboardConfig,
+                shouldDestroyTreeStore: this.getContext().isFeatureEnabled('S73617_GRIDBOARD_SHOULD_DESTROY_TREESTORE'),
                 plugins: [
                     'rallygridboardaddnew',
                     {
@@ -171,8 +174,7 @@
                     {
                         ptype: 'rallygridboardfieldpicker',
                         headerPosition: 'left',
-                        boardFieldBlackList: ['PredecessorsAndSuccessors', 'DefectStatus', 'TaskStatus', 'DisplayColor'],
-                        alwaysSelectedValues: ['FormattedID', 'Name', 'Owner', 'BlockedReason'],
+                        boardFieldBlackList: ['Successors', 'Predecessors', 'DisplayColor'],
                         modelNames: modelNames,
                         boardFieldDefaults: this.getSetting('cardFields').split(',')
                     },
@@ -199,7 +201,8 @@
                 },
                 storeConfig: {
                     filters: this._getFilters()
-                }
+                },
+                height: this.getHeight()
             };
         },
 
@@ -266,7 +269,8 @@
                     {
                         ptype: 'rallyscrollablecardboard',
                         containerEl: this.getEl()
-                    }
+                    },
+                    {ptype: 'rallyfixedheadercardboard'}
                 ],
                 types: this._getDefaultTypes(),
                 attribute: this.getSetting('groupByField'),
@@ -300,7 +304,7 @@
                     fetch: ["InProgressDate", "ScheduleState"]
                 }
             };
-            if (this._shouldShowSwimLanes() && this.getSetting('showRows')) {
+            if (this.getSetting('showRows')) {
                 Ext.merge(config, {
                     rowConfig: {
                         field: this.getSetting('rowsField'),

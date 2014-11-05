@@ -1,7 +1,7 @@
-.ext-ie .kanban .right .filterInfo {
+.ext-ie .kanban .rly-right .filterInfo {
   width: 25px;
 }
-.ext-ie .kanban .right .artifact-type-chooser {
+.ext-ie .kanban .rly-right .artifact-type-chooser {
   width: 265px;
 }
 .cardboard .status-content > .status-field.RevisionHistory {
@@ -29,4 +29,7 @@
 .sla {
   font-size: large;
   text-align: center;
+}
+.kanban {
+  overflow-y: hidden;
 }

@@ -1,15 +1,11 @@
 (function() {
     var Ext = window.Ext4 || window.Ext;
 
-    /**
-     *
-     */
     Ext.define('Rally.apps.kanban.Settings', {
         singleton: true,
         requires: [
             'Rally.apps.kanban.ColumnSettingsField',
             'Rally.ui.combobox.FieldComboBox',
-            'Rally.ui.picker.FieldPicker',
             'Rally.ui.CheckboxField',
             'Rally.ui.plugin.FieldValidationUi'
         ],
@@ -60,22 +56,23 @@
                 }
             ];
 
-            if (config.shouldShowRowSettings) {
-                items.push({
-                    name: 'groupHorizontallyByField',
-                    xtype: 'rowsettingsfield',
-                    fieldLabel: 'Swimlanes',
-                    margin: '10 0 0 0',
-                    mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
-                    readyEvent: 'ready',
-                    explicitFields: [
-                        {name: 'Blocked', value: 'Blocked'},
-                        {name: 'Owner', value: 'Owner'},
-                        {name: 'Sizing', value: 'PlanEstimate'},
-                        {name: 'Expedite', value: 'Expedite'}
-                   ]
-                });
-            }
+            items.push({
+                name: 'groupHorizontallyByField',
+                xtype: 'rowsettingsfield',
+                fieldLabel: 'Swimlanes',
+                margin: '10 0 0 0',
+                mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
+                readyEvent: 'ready',
+                includeCustomFields: true,
+                includeConstrainedNonCustomFields: false,
+                includeObjectFields: false,
+                explicitFields: [
+                    {name: 'Blocked', value: 'Blocked'},
+                    {name: 'Owner', value: 'Owner'},
+                    {name: 'Sizing', value: 'PlanEstimate'},
+                    {name: 'Expedite', value: 'Expedite'}
+               ]
+            });
 
             items.push(
                 {

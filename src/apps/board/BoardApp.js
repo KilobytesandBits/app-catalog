@@ -5,13 +5,18 @@
         extend: 'Rally.app.App',
         alias: 'widget.boardapp',
         requires: [
-            'Rally.apps.board.Settings',
+            'Rally.ui.cardboard.plugin.FixedHeader',
             'Rally.ui.gridboard.GridBoard',
             'Rally.ui.gridboard.plugin.GridBoardAddNew',
             'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
             'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
-            'Rally.data.util.Sorter'
+            'Rally.data.util.Sorter',
+            'Rally.apps.board.Settings'
         ],
+
+        cls: 'customboard',
+        autoScroll: false,
+        layout: 'fit',
 
         config: {
             defaultSettings: {
@@ -55,8 +60,7 @@
                     {
                         ptype: 'rallygridboardfieldpicker',
                         headerPosition: 'left',
-                        boardFieldBlackList: ['PredecessorsAndSuccessors', 'DefectStatus', 'TaskStatus', 'DisplayColor'],
-                        alwaysSelectedValues: ['FormattedID', 'Name', 'Owner'],
+                        boardFieldBlackList: ['Successors', 'Predecessors', 'DisplayColor'],
                         modelNames: modelNames,
                         boardFieldDefaults: (this.getSetting('fields')
                             && this.getSetting('fields').split(',')) || []
@@ -84,7 +88,8 @@
                     editable: true,
                     showIconMenus: true
                 },
-                loadMask: true
+                loadMask: true,
+                plugins: [{ptype:'rallyfixedheadercardboard'}]
             };
             if (this.getSetting('showRows')) {
                 Ext.merge(boardConfig, {

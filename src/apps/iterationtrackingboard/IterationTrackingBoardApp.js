@@ -1,7 +1,7 @@
 (function () {
     var Ext = window.Ext4 || window.Ext;
 
-    var defaultGridColumns = ['Name', 'ScheduleState', 'Blocked', 'PlanEstimate', 'TaskStatus', 'TaskEstimateTotal', 'TaskRemainingTotal', 'Owner', 'DefectStatus', 'Discussion'];
+    var defaultGridColumns = ['Name', 'ScheduleState', 'Blocked', 'PlanEstimate', 'Tasks', 'TaskEstimateTotal', 'TaskRemainingTotal', 'Owner', 'Defects', 'Discussion'];
 
     /**
      * Iteration Tracking Board App
@@ -21,11 +21,8 @@
             'Rally.ui.gridboard.plugin.GridBoardActionsMenu',
             'Rally.ui.gridboard.plugin.GridBoardAddNew',
             'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
-            'Rally.ui.gridboard.plugin.GridBoardFilterInfo',
             'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
             'Rally.ui.cardboard.plugin.ColumnPolicy',
-            'Rally.ui.gridboard.plugin.GridBoardFilterInfo',
-            'Rally.ui.gridboard.plugin.GridBoardFilterControl',
             'Rally.ui.gridboard.plugin.GridBoardToggleable',
             'Rally.ui.grid.plugin.TreeGridExpandedRowPersistence',
             'Rally.ui.grid.plugin.TreeGridChildPager',
@@ -36,17 +33,14 @@
             'Rally.ui.filter.view.OwnerPillFilter',
             'Rally.ui.filter.view.TagPillFilter',
             'Rally.app.Message',
-            'Rally.apps.iterationtrackingboard.Column',
             'Rally.apps.iterationtrackingboard.StatsBanner',
             'Rally.apps.iterationtrackingboard.StatsBannerField',
             'Rally.clientmetrics.ClientMetricsRecordable',
             'Rally.apps.iterationtrackingboard.PrintDialog',
-            'Rally.ui.grid.plugin.ColumnAutoSizer',
             'Rally.apps.common.RowSettingsField'
         ],
 
         mixins: [
-            'Rally.app.CardFieldSelectable',
             'Rally.clientmetrics.ClientMetricsRecordable'
         ],
         componentCls: 'iterationtrackingboard',
@@ -62,16 +56,27 @@
                 showCardAge: true,
                 showStatsBanner: true,
                 cardAgeThreshold: 3
-            }
+            },
+            includeStatsBanner: true
         },
 
         modelNames: ['User Story', 'Defect', 'Defect Suite', 'Test Set'],
+
+        constructor: function(config) {
+            _.defaults(config, { layout: 'anchor'});
+
+            this.callParent(arguments);
+        },
 
         onScopeChange: function() {
             if(!this.rendered) {
                 this.on('afterrender', this.onScopeChange, this, {single: true});
                 return;
             }
+
+            var me = this;
+
+            this.suspendLayouts();
 
             var grid = this.down('rallytreegrid');
             if (grid) {
@@ -80,7 +85,7 @@
                 grid.fireEvent('storecurrentpagereset');
             }
 
-            if(this._shouldShowStatsBanner()){
+            if (this._shouldShowStatsBanner()){
                 this._addStatsBanner();
             }
 
@@ -95,6 +100,8 @@
                     this._addGridBoard(gridStore);
                 },
                 scope: this
+            }).always(function() {
+                me.resumeLayouts(true);
             });
         },
 
@@ -109,25 +116,23 @@
                 }
             });
 
-            if (this._shouldShowSwimLanes()) {
-                fields.push({
-                    name: 'groupHorizontallyByField',
-                    xtype: 'rowsettingsfield',
-                    fieldLabel: 'Swimlanes',
-                    margin: '10 0 0 0',
-                    mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
-                    readyEvent: 'ready',
-                    includeCustomFields: false,
-                    includeConstrainedNonCustomFields: false,
-                    includeObjectFields: false,
-                    explicitFields: [
-                        {name: 'Blocked', value: 'Blocked'},
-                        {name: 'Owner', value: 'Owner'},
-                        {name: 'Sizing', value: 'PlanEstimate'},
-                        {name: 'Expedite', value: 'Expedite'}
-                    ]
-                });
-            }
+            fields.push({
+                name: 'groupHorizontallyByField',
+                xtype: 'rowsettingsfield',
+                fieldLabel: 'Swimlanes',
+                margin: '10 0 0 0',
+                mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
+                readyEvent: 'ready',
+                includeCustomFields: false,
+                includeConstrainedNonCustomFields: false,
+                includeObjectFields: false,
+                explicitFields: [
+                    {name: 'Blocked', value: 'Blocked'},
+                    {name: 'Owner', value: 'Owner'},
+                    {name: 'Sizing', value: 'PlanEstimate'},
+                    {name: 'Expedite', value: 'Expedite'}
+                ]
+            });
 
             return fields;
         },
@@ -147,28 +152,21 @@
         _buildGridStore: function() {
             var context = this.getContext(),
                 config = {
+                    context: context.getDataContext(),
                     models: this.modelNames,
                     autoLoad: false,
                     remoteSort: true,
                     root: {expanded: true},
                     enableHierarchy: true,
                     pageSize: this.getGridPageSizes()[1],
-                    childPageSizeEnabled: context.isFeatureEnabled('EXPAND_ALL_TREE_GRID_CHILDREN')
+                    childPageSizeEnabled: true
                 };
-
-            if(!context.isFeatureEnabled('USE_CUSTOM_FILTER_POPOVER_ON_ITERATION_TRACKING_APP')) {
-                config.filters = [context.getTimeboxScope().getQueryFilter()];
-            }
 
             return Ext.create('Rally.data.wsapi.TreeStoreBuilder').build(config);
         },
 
-        _shouldShowSwimLanes: function() {
-            return this.getContext().isFeatureEnabled('F5684_KANBAN_SWIM_LANES');
-        },
-
         _shouldShowStatsBanner: function() {
-            return this.getSetting('showStatsBanner');
+            return this.includeStatsBanner && this.getSetting('showStatsBanner');
         },
 
         _addStatsBanner: function() {
@@ -178,11 +176,12 @@
                 itemId: 'statsBanner',
                 context: this.getContext(),
                 margin: '0 0 5px 0',
+                shouldOptimizeLayouts: this.config.optimizeFrontEndPerformanceIterationStatus,
                 listeners: {
                     resize: this._resizeGridBoardToFillSpace,
                     scope: this
                 }
-            });
+           });
         },
 
         _addGridBoard: function (gridStore) {
@@ -199,9 +198,11 @@
                 modelNames: this.modelNames,
                 cardBoardConfig: this._getBoardConfig(),
                 gridConfig: this._getGridConfig(gridStore),
+                shouldDestroyTreeStore: this.getContext().isFeatureEnabled('S73617_GRIDBOARD_SHOULD_DESTROY_TREESTORE'),
+                layout: 'anchor',
                 storeConfig: {
                     useShallowFetch: false,
-                    filters: [context.getTimeboxScope().getQueryFilter()]
+                    filters: this._getGridboardFilters(gridStore.model)
                 },
                 addNewPluginConfig: {
                     style: {
@@ -215,8 +216,41 @@
                     recordcreate: this._publishContentUpdatedNoDashboardLayout,
                     scope: this
                 },
-                height: Math.max(this.getAvailableGridBoardHeight(), 150)
+                height: Math.max(this._getAvailableGridBoardHeight(), 150)
             });
+        },
+
+        _getGridboardFilters: function(model) {
+            var timeboxScope = this.getContext().getTimeboxScope(),
+                timeboxFilter = timeboxScope.getQueryFilter(),
+                filters = [timeboxFilter];
+
+            if (!timeboxScope.getRecord() && this.getContext().getSubscription().StoryHierarchyEnabled) {
+                filters.push(this._createLeafStoriesOnlyFilter(model));
+            }
+            return filters;
+        },
+
+        _createLeafStoriesOnlyFilter: function(model) {
+            var typeDefOid = model.getArtifactComponentModel('HierarchicalRequirement').typeDefOid;
+
+            var userStoryFilter = Ext.create('Rally.data.wsapi.Filter', {
+                property: 'TypeDefOid',
+                value: typeDefOid
+            });
+
+            var noChildrenFilter = Ext.create('Rally.data.wsapi.Filter', {
+                property: 'DirectChildrenCount',
+                value: 0
+            });
+
+            var notUserStoryFilter = Ext.create('Rally.data.wsapi.Filter', {
+                property: 'TypeDefOid',
+                value: typeDefOid,
+                operator: '!='
+            });
+
+            return userStoryFilter.and(noChildrenFilter).or(notUserStoryFilter);
         },
 
         _getBoardConfig: function() {
@@ -226,12 +260,12 @@
                     {ptype: 'rallyfixedheadercardboard'}
                 ],
                 columnConfig: {
-                    xtype: 'iterationtrackingboardcolumn',
                     additionalFetchFields: ['PortfolioItem'],
                     plugins: [{
                         ptype: 'rallycolumnpolicy',
                         app: this
-                    }]
+                    }],
+                    requiresModelSpecificFilters: false
                 },
                 cardConfig: {
                     showAge: this.getSetting('showCardAge') ? this.getSetting('cardAgeThreshold') : -1
@@ -242,7 +276,7 @@
                 }
             };
 
-            if (this._shouldShowSwimLanes() && this.getSetting('showRows') && this.getSetting('rowsField')) {
+            if (this.getSetting('showRows') && this.getSetting('rowsField')) {
                 Ext.merge(config, {
                     rowConfig: {
                         field: this.getSetting('rowsField'),
@@ -254,60 +288,48 @@
             return config;
         },
 
-        /**
-         * @private
-         */
-        getAvailableGridBoardHeight: function() {
+        _getAvailableGridBoardHeight: function() {
             var height = this.getHeight();
-            if(this._shouldShowStatsBanner() && this.down('#statsBanner').rendered) {
+            if (this._shouldShowStatsBanner() && this.down('#statsBanner').rendered) {
                 height -= this.down('#statsBanner').getHeight();
+            }
+            if (this.getHeader()) {
+                height -= this.getHeader().getHeight();
             }
             return height;
         },
 
+        _shouldShowExpandAll: function() {
+            return !Ext.isIE ||
+                (this.getContext().isFeatureEnabled('S76915_EXPAND_ALL_FOR_IE') && Ext.isIE9p);
+        },
+
         _getGridBoardPlugins: function() {
-            var plugins = ['rallygridboardaddnew'];
+            var plugins = [{
+                ptype: 'rallygridboardaddnew'
+            }];
             var context = this.getContext();
 
-            if (context.isFeatureEnabled('EXPAND_ALL_TREE_GRID_CHILDREN') && !Ext.isIE) {
+            if (this._shouldShowExpandAll()) {
                 plugins.push('rallygridboardexpandall');
             }
 
-            if (context.isFeatureEnabled('BETA_TRACKING_EXPERIENCE')) {
-                if (context.isFeatureEnabled('USE_CUSTOM_FILTER_POPOVER_ON_ITERATION_TRACKING_APP')) {
-                    plugins.push({
-                        ptype: 'rallygridboardcustomfiltercontrol',
-                        filterChildren: this.getContext().isFeatureEnabled('S58650_ALLOW_WSAPI_TRAVERSAL_FILTER_FOR_MULTIPLE_TYPES'),
-                        filterControlConfig: {
-                            blackListFields: ['Iteration', 'PortfolioItem'],
-                            margin: '3 9 3 30',
-                            modelNames: this.modelNames,
-                            stateful: true,
-                            stateId: context.getScopedStateId('iteration-tracking-custom-filter-button')
-                        },
-                        showOwnerFilter: true,
-                        ownerFilterControlConfig: {
-                            stateful: true,
-                            stateId: context.getScopedStateId('iteration-tracking-owner-filter')
-                        }
-                    });
-                } else {
-                    plugins.push({
-                        ptype: 'rallygridboardfiltercontrol',
-                        filterControlConfig: {
-                            cls: 'small gridboard-filter-control',
-                            context: context,
-                            items: [
-                                this._createOwnerFilterItem(context),
-                                this._createTagFilterItem(context),
-                                this._createModelFilterItem(context)
-                            ],
-                            stateful: true,
-                            stateId: context.getScopedStateId('iteration-tracking-filter-button')
-                        }
-                    });
+            plugins.push({
+                ptype: 'rallygridboardcustomfiltercontrol',
+                filterChildren: this.getContext().isFeatureEnabled('S58650_ALLOW_WSAPI_TRAVERSAL_FILTER_FOR_MULTIPLE_TYPES'),
+                filterControlConfig: {
+                    blackListFields: ['Iteration', 'PortfolioItem'],
+                    margin: '3 9 3 30',
+                    modelNames: this.modelNames,
+                    stateful: true,
+                    stateId: context.getScopedStateId('iteration-tracking-custom-filter-button')
+                },
+                showOwnerFilter: true,
+                ownerFilterControlConfig: {
+                    stateful: true,
+                    stateId: context.getScopedStateId('iteration-tracking-owner-filter')
                 }
-            }
+            });
 
             plugins.push('rallygridboardtoggleable');
 
@@ -350,39 +372,34 @@
                 }
             });
 
-            var alwaysSelectedValues = ['FormattedID', 'Name', 'Owner'];
+            var alwaysSelectedValues = ['FormattedID', 'Name'];
             if (context.getWorkspace().WorkspaceConfiguration.DragDropRankingEnabled) {
                 alwaysSelectedValues.push('DragAndDropRank');
-            }
-
-            if (!context.isFeatureEnabled('BETA_TRACKING_EXPERIENCE')) {
-                plugins.push({
-                    ptype: 'rallygridboardfilterinfo',
-                    isGloballyScoped: Ext.isEmpty(this.getSetting('project')),
-                    stateId: 'iteration-tracking-owner-filter-' + this.getAppId()
-                });
             }
 
             plugins.push({
                 ptype: 'rallygridboardfieldpicker',
                 headerPosition: 'left',
                 gridFieldBlackList: [
-                    'ObjectID',
-                    'Description',
-                    'DisplayColor',
-                    'Notes',
-                    'Subscription',
-                    'Workspace',
                     'Changesets',
-                    'RevisionHistory',
                     'Children',
+                    'Description',
+                    'Estimate',
+                    'Notes',
+                    'ObjectID',
+                    'Predecessors',
+                    'RevisionHistory',
+                    'Subscription',
+                    'Successors',
+                    'ToDo',
+                    'Workspace'
+                ],
+                boardFieldBlackList: [
                     'Successors',
                     'Predecessors'
                 ],
-                boardFieldBlackList: [
-                    'PredecessorsAndSuccessors'
-                ],
-                alwaysSelectedValues: alwaysSelectedValues,
+                gridAlwaysSelectedValues: alwaysSelectedValues,
+                boardAlwaysSelectedValues: alwaysSelectedValues.concat(['Owner']),
                 modelNames: this.modelNames,
                 boardFieldDefaults: (this.getSetting('cardFields') && this.getSetting('cardFields').split(',')) ||
                     ['Parent', 'Tasks', 'Defects', 'Discussion', 'PlanEstimate', 'Iteration']
@@ -459,7 +476,7 @@
 
         _resizeGridBoardToFillSpace: function() {
             if (this.gridboard) {
-                this.gridboard.setHeight(this.getAvailableGridBoardHeight());
+                this.gridboard.setHeight(this._getAvailableGridBoardHeight());
             }
         },
 
@@ -560,49 +577,6 @@
             return customViewConfig;
         },
 
-        _createOwnerFilterItem: function (context) {
-            var isPillPickerEnabled = context.isFeatureEnabled('BETA_TRACKING_EXPERIENCE'),
-                projectRef = context.getProjectRef();
-
-            if (isPillPickerEnabled) {
-                return {
-                    xtype: 'rallyownerpillfilter',
-                    margin: '-15 0 5 0',
-                    filterChildren: this.getContext().isFeatureEnabled('S58650_ALLOW_WSAPI_TRAVERSAL_FILTER_FOR_MULTIPLE_TYPES'),
-                    project: projectRef,
-                    showPills: false,
-                    showClear: true
-                };
-            } else {
-                return {
-                    xtype: 'rallyownerfilter',
-                    margin: '5 0 5 0',
-                    filterChildren: this.getContext().isFeatureEnabled('S58650_ALLOW_WSAPI_TRAVERSAL_FILTER_FOR_MULTIPLE_TYPES'),
-                    project: projectRef
-                };
-            }
-
-        },
-
-        _createTagFilterItem: function (context) {
-            var filterUiImprovementsToggleEnabled = context.isFeatureEnabled('BETA_TRACKING_EXPERIENCE');
-            return {
-                xtype: 'rallytagpillfilter',
-                margin: filterUiImprovementsToggleEnabled ? '-15 0 5 0' : '5 0 5 0',
-                showPills: filterUiImprovementsToggleEnabled,
-                showClear: filterUiImprovementsToggleEnabled,
-                remoteFilter: filterUiImprovementsToggleEnabled
-            };
-        },
-
-        _createModelFilterItem: function (context) {
-            return {
-                xtype: 'rallymodelfilter',
-                models: this.modelNames,
-                context: context
-            };
-        },
-
         _getGridConfig: function (gridStore) {
             var context = this.getContext(),
                 stateString = 'iteration-tracking-treegrid',
@@ -613,24 +587,24 @@
                 store: gridStore,
                 columnCfgs: this._getGridColumns(),
                 summaryColumns: this._getSummaryColumnConfig(),
-                enableBulkEdit: context.isFeatureEnabled('BETA_TRACKING_EXPERIENCE'),
-                plugins: ['rallycolumnautosizerplugin', 'rallytreegridchildpager'],
+                enableInlineAdd: context.isFeatureEnabled('F6038_ENABLE_INLINE_ADD'),
+                enableBulkEdit: true,
+                enableBulkEditMilestones: context.isFeatureEnabled('S70874_SHOW_MILESTONES_PAGE'),
+                pagingToolbarCfg: {
+                    pageSizes: this.getGridPageSizes(),
+                    comboboxConfig: {
+                        defaultSelectionPosition: 'last'
+                    }
+                },
+                plugins: ['rallytreegridchildpager'],
                 stateId: stateId,
-                stateful: true
+                stateful: true,
+                variableRowHeight: !context.isFeatureEnabled('S75353_ITERATON_TREE_GRID_APP_FIXED_ROW_HEIGHT')
             };
 
-            if (context.isFeatureEnabled('EXPAND_ALL_TREE_GRID_CHILDREN')) {
-                gridConfig.plugins.push({
-                    ptype: 'rallytreegridexpandedrowpersistence',
-                    enableExpandLoadingMask: !context.isFeatureEnabled('EXPAND_ALL_LOADING_MASK_DISABLE')
-                });
-            }
-
-            if (context.isFeatureEnabled('S67643_LIMIT_TREEGRID_PAGE_SIZE')) {
-                gridConfig.pagingToolbarCfg = {
-                    pageSizes: this.getGridPageSizes()
-                };
-            }
+            gridConfig.plugins.push({
+                ptype: 'rallytreegridexpandedrowpersistence'
+            });
 
             return gridConfig;
         },
@@ -729,7 +703,7 @@
         },
 
         getGridPageSizes: function() {
-            return Ext.isIE ? [10, 25, 50] : [10, 25, 50, 100];
+            return [10, 25, 50];
         }
     });
 })();

@@ -130,7 +130,7 @@
           }
         }
 
-        .carousel {
+        .rly-carousel {
           .override-ext-container();
 
           .carousel-panel {
@@ -158,7 +158,8 @@
 
       .toggle-icon {
         color: @grey4;
-        font-size: 18px;
+        font-size: 15px;
+        padding-top: 4px;
         position: relative;
         right: 1px;
       }
@@ -167,16 +168,24 @@
         cursor: pointer;
 
         .toggle-icon {
-          color: @grey6;
+          color: @grey8;
         }
       }
     }
   }
 
   &.collapsed {
+    cursor: pointer;
+
     .stat-panel {
       height: 25px;
       padding-top: 2px;
+
+      &.collapse-expand {
+        .toggle-icon {
+          padding-top: 2px;
+        }
+      }
 
       .metric-icon {
         color: @grey6;
@@ -249,7 +258,7 @@
   }
 }
 
-.iteration-progress-dialog .carousel .carousel-panel .scroll-button span {
+.iteration-progress-dialog .rly-carousel .carousel-panel .scroll-button span {
   width: 45px;
   height: 50px;
   line-height: 46px;
