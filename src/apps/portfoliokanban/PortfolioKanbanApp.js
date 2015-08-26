@@ -8,6 +8,7 @@
     Ext.define('Rally.apps.portfoliokanban.PortfolioKanbanApp', {
         extend: 'Rally.apps.common.PortfolioItemsGridBoardApp',
         requires: [
+            'Rally.apps.common.RowSettingsField',
             'Rally.apps.portfoliokanban.PortfolioKanbanCard',
             'Rally.apps.portfoliokanban.PortfolioKanbanPolicy',
             'Rally.ui.gridboard.plugin.BoardPolicyDisplayable',
@@ -19,15 +20,16 @@
             'Deft.Deferred'
         ],
 
-        autoScroll: false,
         appName: 'Portfolio Kanban',
+        autoScroll: false,
         cls: 'portfolio-kanban',
-        stateName: 'kanban',
+        statePrefix: 'portfolio-kanban',
+        toggleState: 'board',
+        settingsScope: 'project',
 
         config: {
-            toggleState: 'board',
             defaultSettings: {
-                fields: 'Discussion,PercentDoneByStoryCount,UserStories'
+                fields: 'Discussion,PercentDoneByStoryCount,UserStories,Milestones'
             }
         },
 
@@ -43,31 +45,41 @@
         ],
 
         constructor: function(config) {
-            if (this.milestonesAreEnabled()) {
-                this.config.defaultSettings.fields += ',Milestones';
-            }
-
+            config.settingsScope = config.isFullPageApp ? 'project' : 'app';
+            config.piTypePickerConfig = { renderInGridHeader: !config.isFullPageApp };
             this.callParent([config]);
         },
 
         getSettingsFields: function () {
-            return [
-                {
-                    type: 'project'
-                },
-                {
-                    type: 'query',
-                    config: {
-                        plugins: [
-                            {
-                                ptype: 'rallyhelpfield',
-                                helpId: 271
-                            },
-                            'rallyfieldvalidationui'
-                        ]
-                    }
+            return [{
+                name: 'groupHorizontallyByField',
+                xtype: 'rowsettingsfield',
+                fieldLabel: 'Swimlanes',
+                margin: '10 0 10 0',
+                mapsToMultiplePreferenceKeys: ['showRows', 'rowsField'],
+                readyEvent: 'ready',
+                whiteListFields: ['Parent'],
+                modelNames: this.piTypePicker.getAllTypeNames(),
+                isAllowedFieldFn: function (field) {
+                    var attr = field.attributeDefinition;
+                    return (attr.Custom && (attr.Constrained || attr.AttributeType.toLowerCase() !== 'string') ||
+                        attr.Constrained || _.contains(['boolean'], attr.AttributeType.toLowerCase())) &&
+                        !_.contains(['web_link', 'text', 'date'], attr.AttributeType.toLowerCase()) &&
+                        !_.contains(['Archived', 'Portfolio Item Type', 'State'], attr.Name);
                 }
-            ];
+            },
+            {
+                type: 'query',
+                config: {
+                    plugins: [
+                        {
+                            ptype: 'rallyhelpfield',
+                            helpId: 271
+                        },
+                        'rallyfieldvalidationui'
+                    ]
+                }
+            }];
         },
 
         _createFilterItem: function(typeName, config) {
@@ -79,11 +91,12 @@
             }, config);
         },
 
-        getHeaderControls: function () {
-            var ctls = this.callParent(arguments);
-            ctls.unshift(this._buildHelpComponent());
-            ctls.push(this._buildFilterInfo());
-            return ctls;
+        addGridBoard: function () {
+            this.callParent(arguments);
+            this.gridboard.getHeader().getRight().add([
+                this._buildHelpComponent(),
+                this._buildFilterInfo()
+            ]);
         },
 
         getGridBoardPlugins: function () {
@@ -112,9 +125,20 @@
         },
 
         getCardBoardConfig: function () {
-            return _.merge(this.callParent(arguments), {
+            var config = _.merge(this.callParent(arguments), {
                 loadDescription: 'Portfolio Kanban'
             });
+
+            if (this.getSetting('showRows') && this.getSetting('rowsField')) {
+                Ext.apply(config, {
+                    rowConfig: {
+                        field: this.getSetting('rowsField'),
+                        sortDirection: 'ASC'
+                    }
+                });
+            }
+
+            return config;
         },
 
         getCardBoardColumnPlugins: function (state) {

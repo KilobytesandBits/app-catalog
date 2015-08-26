@@ -2,15 +2,36 @@
     var Ext = window.Ext4 || window.Ext;
 
     Ext.define('Rally.apps.common.PortfolioItemsGridBoardApp', {
-        extend: 'Rally.apps.common.GridBoardApp',
+        extend: 'Rally.app.GridBoardApp',
+
         requires: [
             'Rally.ui.cardboard.plugin.CollapsibleColumns',
-            'Rally.ui.cardboard.plugin.FixedHeader',
-            'Rally.ui.combobox.PortfolioItemTypeComboBox'
+            'Rally.ui.cardboard.plugin.FixedHeader'
         ],
 
-        config: {
-            toggleState: 'grid'
+        constructor: function(config){
+            var defaultConfig = {
+                piTypePickerConfig: {
+                    renderInGridHeader: false
+                }
+            };
+
+            this.callParent([Ext.Object.merge(defaultConfig, config)]);
+        },
+
+        initComponent: function(){
+            this.callParent(arguments);
+            this.addCls('portfolio-items-grid-board-app');
+        },
+
+        addGridBoard: function(){
+            if (this.gridboard && this.piTypePicker && this.piTypePicker.rendered) {
+                var parent = this.piTypePicker.up();
+                if(parent && parent.remove){
+                    parent.remove(this.piTypePicker, false);
+                }
+            }
+            this.callParent(arguments);
         },
 
         launch: function () {
@@ -36,28 +57,18 @@
             });
         },
 
-        getHeaderControls: function () {
-            return this.callParent(arguments).concat(this.piTypePicker);
-        },
-
-        getStateId: function () {
-            return 'portfolio-' + this.stateName;
-        },
-
         getFilterControlConfig: function () {
             return {
                 blackListFields: ['PortfolioItemType'],
-                whiteListFields: [this.milestonesAreEnabled() ? 'Milestones' : '']
+                whiteListFields: ['Milestones']
             };
         },
 
         getFieldPickerConfig: function () {
             return _.merge(this.callParent(arguments), {
                 boardFieldDefaults: (this.getSetting('fields') || '').split(','),
-                margin: '3 9 14 0',
-                gridAlwaysSelectedValues: ['FormattedID', 'Name'].concat(
-                    this.getContext().getWorkspace().WorkspaceConfiguration.DragDropRankingEnabled ? ['DragAndDropRank'] : []
-                )
+                boardFieldBlackList: ['Predecessors', 'Successors'],
+                margin: '3 9 14 0'
             });
         },
 
@@ -179,23 +190,18 @@
         },
 
         getGridStoreConfig: function () {
-            return { models: this.piTypePicker.getAllTypeNames() };
-        },
-
-        milestonesAreEnabled: function () {
-            var context = this.getContext() ? this.getContext() : Rally.environment.getContext();
-            return context.isFeatureEnabled('S70874_SHOW_MILESTONES_PAGE');
+            return _.merge({}, this.gridStoreConfig, { models: this.piTypePicker.getAllTypeNames() });
         },
 
         _createPITypePicker: function () {
-            if (this.piTypePicker) {
+            if (this.piTypePicker && this.piTypePicker.destroy) {
                 this.piTypePicker.destroy();
             }
-
             var deferred = new Deft.Deferred();
-
-            this.piTypePicker = Ext.create('Rally.ui.combobox.PortfolioItemTypeComboBox', {
-                preferenceName: 'portfolioitems' + this.stateName + '-typepicker',
+            var piTypePickerConfig = {
+                preferenceName: this.getStateId('typepicker'),
+                fieldLabel: '', // delete this when removing PORTFOLIO_ITEM_TREE_GRID_PAGE_OPT_IN toggle. Can't delete these from PI Combobox right now or GUI tests fail in old PI page
+                labelWidth: 0,  // delete this when removing PORTFOLIO_ITEM_TREE_GRID_PAGE_OPT_IN toggle. Can't delete these from PI Combobox right now or GUI tests fail in old PI page
                 value: this.getSetting('type'),
                 context: this.getContext(),
                 listeners: {
@@ -208,7 +214,20 @@
                     },
                     scope: this
                 }
-            });
+            };
+
+            if(!this.config.piTypePickerConfig.renderInGridHeader){
+                piTypePickerConfig.renderTo = Ext.query('#content .titlebar .dashboard-timebox-container')[0];
+            }
+
+            this.piTypePicker = Ext.create('Rally.ui.combobox.PortfolioItemTypeComboBox', piTypePickerConfig);
+
+            if(this.config.piTypePickerConfig.renderInGridHeader){
+              this.on('gridboardadded', function() {
+                var headerContainer = this.gridboard.getHeader().getLeft();
+                headerContainer.add(this.piTypePicker);
+              });
+            }
 
             return deferred.promise;
         },
@@ -219,12 +238,7 @@
             if (this._pickerTypeChanged(picker)) {
                 this.currentType = newType;
                 this.modelNames = [newType.get('TypePath')];
-
-                if (this.toggleState === 'grid') {
-                    this.gridboard.fireEvent('modeltypeschange', this.gridboard, [newType]);
-                } else {
-                    this.loadGridBoard();
-                }
+                this.gridboard.fireEvent('modeltypeschange', this.gridboard, [newType]);
             }
         },
 
@@ -235,6 +249,14 @@
 
         _publishContentUpdatedNoDashboardLayout: function () {
             this.fireEvent('contentupdated', { dashboardLayout: false });
+        },
+
+        onDestroy: function() {
+            this.callParent(arguments);
+            if(this.piTypePicker) {
+                this.piTypePicker.destroy();
+                delete this.piTypePicker;
+            }
         }
     });
 })();

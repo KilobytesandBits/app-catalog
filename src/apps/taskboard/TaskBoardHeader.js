@@ -10,23 +10,35 @@
         extend: 'Rally.ui.cardboard.row.Header',
         alias: 'widget.rallytaskboardrowheader',
 
-        afterRender: function() {
-            var formattedIdLinkEl = this.getEl().down('.formatted-id-link');
-            if (formattedIdLinkEl){
-                formattedIdLinkEl.on('mouseenter', this._showWorkProductPopover, this);
-            }
-            this.callParent(arguments);
+        requires: [
+            'Ext.util.DelayedTask',
+            'Rally.ui.popover.PopoverFactory'
+        ],
+
+        mixins: {
+            clientMetrics: 'Rally.clientmetrics.ClientMetricsRecordable'
         },
 
-        beforeDestroy: function() {
-            var formattedIdLinkEl = this.getEl().down('.formatted-id-link');
-            if (formattedIdLinkEl){
-                formattedIdLinkEl.un('mouseenter', this._showWorkProductPopover, this);
-            }
+        initComponent: function() {
             this.callParent(arguments);
+            this._delayedTask = Ext.create('Ext.util.DelayedTask', this._showPopover, this);
+            this.on('afterrender', function() {
+                this.getEl().on('mouseover', this._onMouseOver, this, {delegate: '.formatted-id-link'});
+                this.getEl().on('mouseout', this._onMouseOut, this, {delegate: '.formatted-id-link'});
+            }, this, {single: true});
         },
 
-        _showWorkProductPopover: function() {
+        _onMouseOver: function() {
+            this._delayedTask.delay(500, null, null);
+        },
+
+        _onMouseOut: function() {
+            this._delayedTask.cancel();
+        },
+
+        _showPopover: function() {
+            this.recordAction({description: 'showing work product popover on task board'});
+
             if (!Ext.getElementById('work-product-popover')) {
                 Rally.ui.popover.PopoverFactory.bake({
                     field: 'WorkProduct',
@@ -35,6 +47,12 @@
                     oid: this.value.ObjectID,
                     context: this.getContext()
                 });
+            }
+        },
+
+        onDestroy: function() {
+            if(this._delayedTask) {
+                this._delayedTask.cancel();
             }
         }
     });

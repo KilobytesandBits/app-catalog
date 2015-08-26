@@ -11,18 +11,21 @@ describe 'Rally.apps.board.BoardApp', ->
       values: [ ScheduleState: 'In-Progress' ]
       createImmediateSubObjects: true
 
+    @ajax.whenQuerying('task').respondWithCount 1,
+      values: [ State: 'In-Progress' ]
+
     @ajax.whenQueryingAllowedValues('hierarchicalrequirement', 'ScheduleState').respondWith ['Defined', 'In-Progress', 'Completed', 'Accepted']
     @ajax.whenQueryingAllowedValues('defect', 'State').respondWith ['Submitted', 'Open', 'Fixed', 'Closed']
+    @ajax.whenQueryingAllowedValues('task', 'State').respondWith ['Submitted', 'Open', 'Fixed', 'Closed']
 
   afterEach ->
     Rally.test.destroyComponentsOfQuery 'boardapp'
 
   it 'has the correct default settings', ->
     @createApp().then =>
-      expect(@app.getSetting('groupByField')).toBe 'ScheduleState'
       expect(@app.getSetting('type')).toBe 'HierarchicalRequirement'
-      expect(@app.getSetting('order')).toBe 'Rank'
-      expect(@app.getSetting('query')).toBe ''
+      expect(@app.getSetting('groupByField')).toBe 'ScheduleState'
+      expect(@app.getSetting('showRows')).toBe false
 
   it 'shows the correct type on the board', ->
     @createApp(type: 'defect', groupByField: 'State').then =>
@@ -55,6 +58,14 @@ describe 'Rally.apps.board.BoardApp', ->
       expect(@_getGridBoard().storeConfig.filters[0].toString())
         .toBe @app.getContext().getTimeboxScope().getQueryFilter().toString()
 
+  it 'does not filter by timebox if model does not have that timebox', ->
+    @ajax.whenQuerying('testcase').respondWithCount 5
+    @ajax.whenQueryingAllowedValues('testcase', 'Priority').respondWith ['None', 'Useful', 'Important', 'Critical']
+    @createApp({type: 'testcase', groupByField: 'Priority'}, context:
+      timebox: Ext.create 'Rally.app.TimeboxScope', record: @_createIterationRecord()
+    ).then =>
+      expect(@_getGridBoard().storeConfig.filters.length).toBe 0
+
   it 'scopes the board to the current timebox scope and specified query filter', ->
     query = '(Name contains foo)'
     @createApp({query: query}, context:
@@ -82,7 +93,7 @@ describe 'Rally.apps.board.BoardApp', ->
         Ext.create('Rally.app.TimeboxScope', record: newTimebox))
 
       @waitForCallback(boardDestroySpy).then =>
-        expect(@_getGridBoard().storeConfig).toOnlyHaveFilterStrings [@app.getContext().getTimeboxScope().getQueryFilter().toString()]
+        expect(@_getGridBoard().storeConfig).toOnlyHaveFilterString @app.getContext().getTimeboxScope().getQueryFilter().toString()
 
   it 'returns settings fields with correct context', ->
     @createApp().then =>
@@ -98,14 +109,45 @@ describe 'Rally.apps.board.BoardApp', ->
     @createApp(showRows: true, rowsField: 'Owner').then =>
       expect(@_getBoard().rowConfig.field).toBe 'Owner'
       expect(@_getBoard().rowConfig.sortDirection).toBe 'ASC'
-      expect(@_getBoard().storeConfig.sorters).toBeUndefined()
 
   it 'should not include rows configuration when showRows setting is false', ->
     @createApp(showRows: false, rowsField: 'Owner').then =>
       expect(@_getBoard().rowConfig).toBeNull()
+
+  it 'should include sorters from order setting', ->
+    @createApp(order: 'Name').then =>
       sorters = @_getBoard().storeConfig.sorters
       expect(sorters.length).toBe 1
       expect(sorters[0].property).toBe @app.getSetting('order')
+
+  it 'should set the initial gridboard height to the app height', ->
+    @createApp().then =>
+      expect(@app.down('rallygridboard').getHeight()).toBe @app.getHeight()
+
+  describe 'ranking', ->
+    it 'should not show for task type with showRows false', ->
+      @createApp(type: 'Task', showRows: false, groupByField: 'State').then =>
+        expect(@_getBoard().enableRanking).toBe false
+        expect(@_getBoard().enableCrossColumnRanking).toBe false
+        expect(@_getBoard().cardConfig.showRankMenuItems).toBe false
+
+    it 'should not show for task type with showRows but swimlane is not work product', ->
+      @createApp(type: 'Task', showRows: true, rowsField: 'Owner', groupByField: 'State').then =>
+        expect(@_getBoard().enableRanking).toBe false
+        expect(@_getBoard().enableCrossColumnRanking).toBe false
+        expect(@_getBoard().cardConfig.showRankMenuItems).toBe false
+
+    it 'should show for task type when swimlane is work product', ->
+      @createApp(type: 'Task', showRows: true, rowsField: 'WorkProduct', groupByField: 'State').then =>
+        expect(@_getBoard().enableRanking).toBe true
+        expect(@_getBoard().enableCrossColumnRanking).toBe true
+        expect(@_getBoard().cardConfig.showRankMenuItems).not.toBeDefined()
+
+    it 'should show for an allowed artifact type', ->
+      @createApp(type: 'Defect', groupByField: 'State').then =>
+        expect(@_getBoard().enableRanking).toBe true
+        expect(@_getBoard().enableCrossColumnRanking).toBe true
+        expect(@_getBoard().cardConfig.showRankMenuItems).not.toBeDefined()
 
   describe 'plugins', ->
 
@@ -138,8 +180,10 @@ describe 'Rally.apps.board.BoardApp', ->
         context: @_createContext options.context
         settings: settings
         renderTo: options.renderTo || 'testDiv'
+        height: 400
 
-      @waitForComponentReady @_getBoard()
+      @once(condition: => @_getBoard()).then =>
+        @waitForComponentReady @_getBoard()
 
     _createContext: (context={}) ->
       Ext.create('Rally.app.Context',

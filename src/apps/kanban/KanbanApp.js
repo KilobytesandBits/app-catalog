@@ -149,36 +149,51 @@
 
         _getGridboardConfig: function(cardboardConfig) {
             var context = this.getContext(),
-                modelNames = this._getDefaultTypes();
+                modelNames = this._getDefaultTypes(),
+                blacklist = ['Successors', 'Predecessors', 'DisplayColor'];
+
             return {
                 xtype: 'rallygridboard',
                 stateful: false,
                 toggleState: 'board',
                 cardBoardConfig: cardboardConfig,
-                shouldDestroyTreeStore: this.getContext().isFeatureEnabled('S73617_GRIDBOARD_SHOULD_DESTROY_TREESTORE'),
                 plugins: [
-                    'rallygridboardaddnew',
+                    {
+                        ptype: 'rallygridboardaddnew',
+                        addNewControlConfig: {
+                            listeners: {
+                                beforecreate: this._onBeforeCreate,
+                                beforeeditorshow: this._onBeforeEditorShow,
+                                scope: this
+                            },
+                            stateful: true,
+                            stateId: context.getScopedStateId('kanban-add-new')
+                        }
+                    },
                     {
                         ptype: 'rallygridboardcustomfiltercontrol',
                         filterChildren: true,
                         filterControlConfig: {
                             blackListFields: [],
-                            whiteListFields: [],
-                            context: context,
+                            whiteListFields: ['Milestones'],
                             margin: '3 9 3 30',
                             modelNames: modelNames,
                             stateful: true,
                             stateId: context.getScopedStateId('kanban-custom-filter-button')
+                        },
+                        showOwnerFilter: true,
+                        ownerFilterControlConfig: {
+                            stateful: true,
+                            stateId: context.getScopedStateId('kanban-owner-filter')
                         }
                     },
                     {
                         ptype: 'rallygridboardfieldpicker',
                         headerPosition: 'left',
-                        boardFieldBlackList: ['Successors', 'Predecessors', 'DisplayColor'],
+                        boardFieldBlackList: blacklist,
                         modelNames: modelNames,
                         boardFieldDefaults: this.getSetting('cardFields').split(',')
                     },
-
                     {
                         ptype: 'rallyboardpolicydisplayable',
                         prefKey: 'kanbanAgreementsChecked',
@@ -189,16 +204,6 @@
                 ],
                 context: context,
                 modelNames: modelNames,
-                addNewPluginConfig: {
-                    listeners: {
-                        beforecreate: this._onBeforeCreate,
-                        beforeeditorshow: this._onBeforeEditorShow,
-                        scope: this
-                    },
-                    style: {
-                        'float': 'left'
-                    }
-                },
                 storeConfig: {
                     filters: this._getFilters()
                 },

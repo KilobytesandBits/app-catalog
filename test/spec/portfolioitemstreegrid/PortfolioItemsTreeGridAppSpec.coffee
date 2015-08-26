@@ -1,15 +1,11 @@
 Ext = window.Ext4 || window.Ext
 
-Ext.require [
-  'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp',
-  'Ext.state.Manager',
-  'Rally.data.util.PortfolioItemTypeDefList'
-]
+Ext.require ['Rally.app.GridBoardApp']
 
 describe 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', ->
 
   helpers
-    createApp: ->
+    createApp: () ->
       context = Ext.create 'Rally.app.Context',
         initialValues:
           project: Rally.environment.getContext().getProject()
@@ -17,13 +13,11 @@ describe 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', ->
           user: Rally.environment.getContext().getUser()
           subscription: Rally.environment.getContext().getSubscription()
 
-      context.isFeatureEnabled = -> true
-
       Ext.create 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp',
         context: context
         renderTo: 'testDiv'
 
-    renderApp: ->
+    renderApp: () ->
       @app = @createApp()
       @waitForComponentReady @app
 
@@ -36,7 +30,7 @@ describe 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', ->
 
   it 'should initialize', ->
     @renderApp().then =>
-      expect(Ext.isDefined(@app)).toBeTruthy()
+      expect(Ext.isDefined(@app)).toBe true
 
   it 'should use the row expansion plugin', ->
     @renderApp().then =>
@@ -48,3 +42,8 @@ describe 'Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', ->
       storeTypes = _.pluck(@app.gridboard.gridConfig.store.models, 'elementName')
       piTypes = _.pluck(@piTypes, 'Name')
       expect(_.intersection(storeTypes, piTypes)).toEqual piTypes
+
+  describe '#getGridConfig', ->
+    it 'should enable inline', ->
+      @renderApp().then =>
+        expect(@app.getGridConfig().enableInlineAdd).toBe true

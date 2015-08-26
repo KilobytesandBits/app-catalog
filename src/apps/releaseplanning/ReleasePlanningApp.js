@@ -14,6 +14,7 @@
         launch: function() {
             Rally.data.util.PortfolioItemHelper.loadTypeOrDefault({
                 defaultToLowest: true,
+                requester: this,
                 success: function (piTypeDef) {
                     this._buildGridBoard(piTypeDef.get('TypePath'));
                 },
@@ -22,9 +23,20 @@
         },
 
         _buildGridBoard: function (piTypePath) {
+            var boardFieldBlacklist =  [
+                    'AcceptedLeafStoryCount',
+                    'AcceptedLeafStoryPlanEstimateTotal',
+                    'DirectChildrenCount',
+                    'LeafStoryCount',
+                    'LeafStoryPlanEstimateTotal',
+                    'LastUpdateDate',
+                    'State',
+                    'UnEstimatedLeafStoryCount'
+                ],
+                context = this.getContext();
+
             this.gridboard = this.add({
                 xtype: 'rallytimeboxgridboard',
-                shouldDestroyTreeStore: this.getContext().isFeatureEnabled('S73617_GRIDBOARD_SHOULD_DESTROY_TREESTORE'),
                 cardBoardConfig: {
                     columnConfig: {
                         columnStatusConfig: {
@@ -37,7 +49,7 @@
                         scope: this
                     }
                 },
-                context: this.getContext(),
+                context: context,
                 endDateField: 'ReleaseDate',
                 listeners: {
                     load: this._onLoad,
@@ -51,7 +63,11 @@
                 plugins: [
                     {
                         ptype: 'rallygridboardaddnew',
-                        rankScope: 'BACKLOG'
+                        rankScope: 'BACKLOG',
+                        addNewControlConfig: {
+                            stateful: true,
+                            stateId: context.getScopedStateId('release-planning-add-new')
+                        }
                     },
                     {
                         ptype: 'rallygridboardcustomfiltercontrol',
@@ -59,29 +75,20 @@
                         filterControlConfig: {
                             margin: '3 9 3 30',
                             blackListFields: ['PortfolioItemType', 'Release'],
-                            whiteListFields: [this._milestonesAreEnabled() ? 'Milestones' : ''],
+                            whiteListFields: ['Milestones'],
                             modelNames: [piTypePath],
                             stateful: true,
-                            stateId: this.getContext().getScopedStateId('release-planning-custom-filter-button')
+                            stateId: context.getScopedStateId('release-planning-custom-filter-button')
                         },
                         showOwnerFilter: true,
                         ownerFilterControlConfig: {
                             stateful: true,
-                            stateId: this.getContext().getScopedStateId('release-planning-owner-filter')
+                            stateId: context.getScopedStateId('release-planning-owner-filter')
                         }
                     },
                     {
                         ptype: 'rallygridboardfieldpicker',
-                        boardFieldBlackList: [
-                            'AcceptedLeafStoryCount',
-                            'AcceptedLeafStoryPlanEstimateTotal',
-                            'DirectChildrenCount',
-                            'LeafStoryCount',
-                            'LeafStoryPlanEstimateTotal',
-                            'LastUpdateDate',
-                            'State',
-                            'UnEstimatedLeafStoryCount'
-                        ],
+                        boardFieldBlackList: boardFieldBlacklist,
                         boardFieldDefaults: this._getDefaultFields(),
                         headerPosition: 'left'
                     }
@@ -93,6 +100,7 @@
 
         _onLoad: function() {
             this._publishContentUpdated();
+            this.recordComponentReady();
             if (Rally.BrowserTest) {
                 Rally.BrowserTest.publishComponentReady(this);
             }
@@ -119,15 +127,7 @@
         },
 
         _getDefaultFields: function() {
-            var fields = ['Discussion', 'PreliminaryEstimate', 'UserStories'];
-            if (this._milestonesAreEnabled()) {
-                fields.push('Milestones');
-            }
-            return fields;
-        },
-
-        _milestonesAreEnabled: function() {
-            return this.getContext().isFeatureEnabled('S70874_SHOW_MILESTONES_PAGE');
+            return ['Discussion', 'PreliminaryEstimate', 'UserStories', 'Milestones'];
         }
     });
 })();

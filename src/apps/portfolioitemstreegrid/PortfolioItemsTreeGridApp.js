@@ -3,16 +3,7 @@
 
     Ext.define('Rally.apps.portfolioitemstreegrid.PortfolioItemsTreeGridApp', {
         extend: 'Rally.apps.common.PortfolioItemsGridBoardApp',
-        mixins: ['Rally.clientmetrics.ClientMetricsRecordable'],
-
-        componentCls: 'pitreegrid',
-        stateName: 'tree',
-
-        config: {
-            toggleState: 'grid',
-            defaultSettings: {
-                columnNames: ['Name', 'Owner', 'PercentDoneByStoryPlanEstimate', 'PercentDoneByStoryCount', 'PreliminaryEstimate', 'PlannedStartDate', 'PlannedEndDate', 'ValueScore', 'RiskScore', 'InvestmentCategory']
-            }
-        }
+        printHeaderLabel: 'Portfolio Items',
+        statePrefix: 'portfolio-tree'
     });
 })();

@@ -4,6 +4,7 @@
     Ext.define('Rally.apps.board.BoardApp', {
         extend: 'Rally.app.App',
         alias: 'widget.boardapp',
+
         requires: [
             'Rally.ui.cardboard.plugin.FixedHeader',
             'Rally.ui.gridboard.GridBoard',
@@ -11,7 +12,11 @@
             'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
             'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
             'Rally.data.util.Sorter',
-            'Rally.apps.board.Settings'
+            'Rally.apps.board.Settings',
+            'Rally.clientmetrics.ClientMetricsRecordable'
+        ],
+        mixins: [
+            'Rally.clientmetrics.ClientMetricsRecordable'
         ],
 
         cls: 'customboard',
@@ -22,61 +27,87 @@
             defaultSettings: {
                 type: 'HierarchicalRequirement',
                 groupByField: 'ScheduleState',
-                query: '',
-                order: 'Rank',
                 showRows: false
             }
         },
 
         launch: function() {
-            this.add(this._getGridBoardConfig());
+            Rally.data.ModelFactory.getModel({
+                type: this.getSetting('type'),
+                context: this.getContext().getDataContext()
+            }).then({
+                success: function (model) {
+                    this.model = model;
+                    this.add(this._getGridBoardConfig());
+                },
+                scope: this
+            });
         },
 
         _getGridBoardConfig: function() {
             var context = this.getContext(),
-                modelNames = [this.getSetting('type')];
-            return {
-                xtype: 'rallygridboard',
-                stateful: false,
-                toggleState: 'board',
-                cardBoardConfig: this._getBoardConfig(),
-                plugins: [
-                    'rallygridboardaddnew',
-                    {
-                        ptype: 'rallygridboardcustomfiltercontrol',
-                        filterChildren: false,
-                        filterControlConfig: {
-                            margin: '3 9 3 30',
-                            modelNames: modelNames,
-                            stateful: true,
-                            stateId: context.getScopedStateId('board-custom-filter-button')
+                modelNames = [this.getSetting('type')],
+                config = {
+                    xtype: 'rallygridboard',
+                    stateful: false,
+                    toggleState: 'board',
+                    cardBoardConfig: this._getBoardConfig(),
+                    plugins: [
+                        {
+                            ptype:'rallygridboardaddnew',
+                            addNewControlConfig: {
+                                stateful: true,
+                                stateId: context.getScopedStateId('board-add-new')
+                            }
                         },
-                        showOwnerFilter: true,
-                        ownerFilterControlConfig: {
-                            stateful: true,
-                            stateId: context.getScopedStateId('board-owner-filter')
+                        {
+                            ptype: 'rallygridboardcustomfiltercontrol',
+                            filterChildren: false,
+                            filterControlConfig: {
+                                margin: '3 9 3 30',
+                                modelNames: modelNames,
+                                stateful: true,
+                                stateId: context.getScopedStateId('board-custom-filter-button')
+                            },
+                            showOwnerFilter: true,
+                            ownerFilterControlConfig: {
+                                stateful: true,
+                                stateId: context.getScopedStateId('board-owner-filter')
+                            }
+                        },
+                        {
+                            ptype: 'rallygridboardfieldpicker',
+                            headerPosition: 'left',
+                            boardFieldBlackList: ['Successors', 'Predecessors', 'DisplayColor'],
+                            modelNames: modelNames,
+                            boardFieldDefaults: (this.getSetting('fields') &&
+                                this.getSetting('fields').split(',')) || []
                         }
+                    ],
+                    context: context,
+                    modelNames: modelNames,
+                    storeConfig: {
+                        filters: this._getFilters()
                     },
-                    {
-                        ptype: 'rallygridboardfieldpicker',
-                        headerPosition: 'left',
-                        boardFieldBlackList: ['Successors', 'Predecessors', 'DisplayColor'],
-                        modelNames: modelNames,
-                        boardFieldDefaults: (this.getSetting('fields')
-                            && this.getSetting('fields').split(',')) || []
+                    listeners: {
+                        load: this._onLoad,
+                        scope: this
                     }
-                ],
-                context: context,
-                modelNames: modelNames,
-                addNewPluginConfig: {
-                    style: {
-                        'float': 'left'
-                    }
-                },
-                storeConfig: {
-                    filters: this._getFilters()
+                };
+            if(this.getEl()) {
+                config.height = this.getHeight();
+            }
+            return config;
+        },
+
+        _onLoad: function() {
+            this.recordComponentReady({
+                miscData: {
+                    type: this.getSetting('type'),
+                    columns: this.getSetting('groupByField'),
+                    rows: (this.getSetting('showRows') && this.getSetting('rowsField')) || ''
                 }
-            };
+            });
         },
 
         _getBoardConfig: function() {
@@ -89,7 +120,10 @@
                     showIconMenus: true
                 },
                 loadMask: true,
-                plugins: [{ptype:'rallyfixedheadercardboard'}]
+                plugins: [{ptype:'rallyfixedheadercardboard'}],
+                storeConfig: {
+                    sorters: Rally.data.util.Sorter.sorters(this.getSetting('order'))
+                }
             };
             if (this.getSetting('showRows')) {
                 Ext.merge(boardConfig, {
@@ -98,18 +132,22 @@
                         sortDirection: 'ASC'
                     }
                 });
-            } else {
-                Ext.merge(boardConfig, {
-                    storeConfig: {
-                        sorters: Rally.data.util.Sorter.sorters(this.getSetting('order'))
-                    }
-                });
+            }
+            if (this._shouldDisableRanking()) {
+                boardConfig.enableRanking = false;
+                boardConfig.enableCrossColumnRanking = false;
+                boardConfig.cardConfig.showRankMenuItems = false;
             }
             return boardConfig;
         },
 
         getSettingsFields: function() {
             return Rally.apps.board.Settings.getFields(this.getContext());
+        },
+
+        _shouldDisableRanking: function() {
+            return this.getSetting('type').toLowerCase() === 'task' && (!this.getSetting('showRows') || this.getSetting('showRows')
+                && this.getSetting('rowsField').toLowerCase() !== 'workproduct');
         },
 
         _addBoard: function() {
@@ -126,12 +164,13 @@
         },
 
         _getFilters: function() {
-            var queries = [];
+            var queries = [],
+                timeboxScope = this.getContext().getTimeboxScope();
             if (this.getSetting('query')) {
                 queries.push(Rally.data.QueryFilter.fromQueryString(this.getSetting('query')));
             }
-            if (this.getContext().getTimeboxScope()) {
-                queries.push(this.getContext().getTimeboxScope().getQueryFilter());
+            if (timeboxScope && timeboxScope.isApplicable(this.model)) {
+                queries.push(timeboxScope.getQueryFilter());
             }
 
             return queries;

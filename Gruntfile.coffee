@@ -5,6 +5,7 @@ module.exports = (grunt) ->
 
   path = require 'path'
 
+  grunt.loadNpmTasks 'grunt-rick'
   grunt.loadNpmTasks 'grunt-contrib-coffee'
   grunt.loadNpmTasks 'grunt-contrib-less'
   grunt.loadNpmTasks 'grunt-contrib-clean'
@@ -17,7 +18,11 @@ module.exports = (grunt) ->
   grunt.loadNpmTasks 'grunt-express'
   grunt.loadNpmTasks 'grunt-contrib-jasmine'
   grunt.loadNpmTasks 'grunt-webdriver-jasmine-runner'
+  grunt.loadNpmTasks 'grunt-parallel-spec-runner'
   grunt.loadNpmTasks 'grunt-text-replace'
+  grunt.loadNpmTasks 'grunt-curl'
+  grunt.loadNpmTasks 'grunt-bump'
+  grunt.loadNpmTasks 'grunt-npm'
 
   grunt.loadTasks 'grunt/tasks'
 
@@ -30,18 +35,27 @@ module.exports = (grunt) ->
   grunt.registerTask 'nexus:deploy', 'Deploys to nexus', ['build', 'nexus:__createartifact__']
   grunt.registerTask 'nexus:verify', 'Fetches the last build and verifies its integrity', ['clean:nexus', 'version', 'nexus:push:verify']
 
+  grunt.registerTask 'npm:publish', 'Publish to our private npm registry', ['bump:patch', 'npm-publish']
+
   grunt.registerTask 'check', 'Run convention tests on all files', ['regex-check']
   grunt.registerTask 'ci', 'Does a full build, runs tests and deploys to nexus', ['build', 'test:ci', 'nexus:__createartifact__']
 
   grunt.registerTask 'test:__buildjasmineconf__', 'Internal task to build and alter the jasmine conf', ['jasmine:apps:build', 'replace:jasmine']
-  grunt.registerTask 'test:fast', 'Just configs and runs the tests. Does not do any compiling. grunt && grunt watch should be running.', ['test:__buildjasmineconf__', 'express:inline', 'webdriver_jasmine_runner:chrome']
+  grunt.registerTask 'test:fast', 'Just configs and runs the tests. Does not do any compiling. grunt && grunt watch should be running.', ['test:__buildjasmineconf__', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:chrome']
+  grunt.registerTask 'test:faster', 'Run jasmine test in parallel', ['express:inline', 'curl-dir:downloadfiles', 'parallel_spec_runner:appsp:chrome']
+  grunt.registerTask 'test:faster:firefox', 'Run jasmine test in parallel', ['express:inline', 'curl-dir:downloadfiles', 'parallel_spec_runner:appsp:firefox']
+
+  grunt.registerTask 'test:fast:firefox', 'Just configs and runs the tests in firefox. Does not do any compiling. grunt && grunt watch should be running.', ['test:__buildjasmineconf__', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:firefox']
   grunt.registerTask 'test:conf', 'Fetches the deps, compiles coffee and css files, runs jshint and builds the jasmine test config', ['nexus:deps', 'clean:test', 'coffee', 'css', 'test:__buildjasmineconf__']
   grunt.registerTask 'test:fastconf', 'Just builds the jasmine test config', ['test:__buildjasmineconf__']
-  grunt.registerTask 'test', 'Sets up and runs the tests in the default browser. Use --browser=<other> to run in a different browser, and --port=<port> for a different port.', ['sanity', 'test:conf', 'express:inline', 'webdriver_jasmine_runner:apps']
-  grunt.registerTask 'test:chrome', 'Sets up and runs the tests in Chrome', ['sanity', 'test:conf', 'express:inline', 'webdriver_jasmine_runner:chrome']
-  grunt.registerTask 'test:firefox', 'Sets up and runs the tests in Firefox', ['sanity', 'test:conf', 'express:inline', 'webdriver_jasmine_runner:firefox']
+  grunt.registerTask 'test', 'Sets up and runs the tests in the default browser. Use --browser=<other> to run in a different browser, and --port=<port> for a different port.', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:apps']
+  grunt.registerTask 'test:chrome', 'Sets up and runs the tests in Chrome', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:chrome']
+  grunt.registerTask 'test:firefox', 'Sets up and runs the tests in Firefox', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:firefox']
+  grunt.registerTask 'test:chrome:faster', 'Sets up and runs the tests in Chrome', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'parallel_spec_runner:appsp:chrome']
+  grunt.registerTask 'test:firefox:faster', 'Sets up and runs the tests in Firefox', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'parallel_spec_runner:appsp:firefox']
   grunt.registerTask 'test:server', "Starts a Jasmine server at localhost:#{serverPort}, specify a different port with --port=<port>", ['express:server', 'express-keepalive']
-  grunt.registerTask 'test:ci', 'Runs the tests in both firefox and chrome', ['sanity', 'test:conf', 'express:inline', 'webdriver_jasmine_runner:chrome', 'webdriver_jasmine_runner:firefox']
+  grunt.registerTask 'test:ci', 'Runs the tests in both firefox and chrome', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'webdriver_jasmine_runner:chrome', 'webdriver_jasmine_runner:firefox']
+  grunt.registerTask 'test:ci:faster', 'Runs the tests in both firefox and chrome', ['sanity', 'test:conf', 'express:inline', 'curl-dir:downloadfiles', 'parallel_spec_runner:appsp:chrome', 'parallel_spec_runner:appsp:firefox']
 
   _ = grunt.util._
   spec = (grunt.option('spec') || grunt.option('jsspec') || '*').replace(/(Spec|Test)$/, '')
@@ -63,14 +77,38 @@ module.exports = (grunt) ->
   specFiles = 'test/spec/**/*Spec.coffee'
   cssFiles = 'src/apps/**/*.{css,less}'
 
+  seleniumMajorVersion = '2.45'
+  seleniumMinorVersion = '0-rally'
+#  seleniumUrl = "http://selenium-release.storage.googleapis.com"
+#  seleniumVersionUrl = "#{seleniumUrl}/#{seleniumMajorVersion}"
+  seleniumUrl = "http://repo-depot.f4tech.com/artifactory/junkyard-local/com/rallydev"
+  seleniumVersionUrl = "#{seleniumUrl}/selenium"
+  grunt.option('selenium-jar-path',"lib/selenium-server-standalone-#{seleniumMajorVersion}.#{seleniumMinorVersion}.jar")
+
+  specFileArray = [
+    "test/gen/**/#{spec}Spec.js"
+  ]
+
   grunt.initConfig
     pkg: grunt.file.readJSON 'package.json'
 
     buildVersion: version
 
+    bump:
+      options:
+        commitFiles: ['package.json']
+        commitMessage: '[ci npm:publish autobump v%VERSION%]',
+        push: true
+        pushTo: 'origin master'
+
+    'npm-publish':
+      options:
+        # the CI will be producing version files and what-not. they can be safely ignored.
+        abortIfDirty: false
+
     clean:
       build: ['build/', 'src/apps/**/*.html', 'temp/']
-      test: ['test/gen', '_SpecRunner.html', '.webdriver']
+      test: ['test/gen', '_SpecRunner*.html', '.webdriver']
       dependencies: ['lib/', 'bin/sencha/']
       target: ['target/']
       nexus: ['tmp']
@@ -134,9 +172,16 @@ module.exports = (grunt) ->
 
     webdriver_jasmine_runner:
       options:
+        seleniumJar: process.env.SELENIUM_JAR_PATH ? grunt.option('selenium-jar-path')
         seleniumServerArgs: ['-Xmx256M']
         testServerPort: inlinePort
       apps: {}
+      appsp:
+        options:
+        #browser: 'phantom'
+        #seleniumServerHost: 'localhost'
+        #seleniumServerPort: 5445
+          testFile: '<%= grunt.task.current.args[0] %>'
       chrome:
         options:
           browser: 'chrome'
@@ -144,77 +189,109 @@ module.exports = (grunt) ->
         options:
           browser: 'firefox'
 
+    'curl-dir':
+      downloadfiles:
+        src: (->
+          jarName = "selenium-server-standalone-#{seleniumMajorVersion}.#{seleniumMinorVersion}.jar";
+          if grunt.file.exists("lib/" + jarName) then [] else ["#{seleniumVersionUrl}/" + jarName]
+        )()
+        dest: 'lib'
+
+    parallel_spec_runner:
+      options:
+        browser: "chrome"
+        specs: specFileArray,
+        # The following specs are excluded because they do not run in isolation in either firefox or chrome,
+        # or they are very flaky in one of these browser
+        # these need to be fixed then they can be removed from the exclude list
+        # test grunt test:fast --spec='YourSpec' --keepalive and
+        # refresh the browser many times to ensure the spec passes before removing these
+        excludedSpecs: [],
+        isolatedSpecs: []
+      appsp:
+        chrome:
+          options:
+            browser: "chrome"
+        firefox:
+          options:
+            browser: "firefox"
+
     jasmine:
-      apps:
-        options:
-          specs: [
-            "test/gen/**/#{spec}Spec.js"
-          ]
-          helpers: [
-            "#{appsdk_path}/test/javascripts/helpers/**/*.js"
-          ]
-          vendor: (->
-            if process.env.APPSDK_PATH?
-              vendorPaths = [
-                "lib/ext/4.2.2/ext-all-debug.js"
-                "#{appsdk_path}/builds/sdk-dependencies.js"
-                "#{appsdk_path}/src/Ext-more.js"
-              ]
-            else
-              vendorPaths = ["#{appsdk_path}/builds/sdk.js"]
-
-            vendorPaths.concat [
-              "#{appsdk_path}/builds/lib/analytics/analytics-all.js"
-              "#{appsdk_path}/builds/lib/closure/closure-all.js"
-
-              # Enable Ext Loader
-              'test/support/ExtLoader.js'
-
-              # 3rd party libraries & customizations
-              "#{appsdk_path}/test/support/sinon/sinon-1.10.2.js"
-              "#{appsdk_path}/test/support/sinon/jasmine-sinon.js"
-              "#{appsdk_path}/test/support/sinon/rally-sinon-config.js"
-
-              # Setup
-              'lib/webdriver/webdriver.js'
-              "#{appsdk_path}/test/support/webdriver/error.js"
-
-              # Asserts
-              "#{appsdk_path}/test/support/helpers/asserts/rally-asserts.js"
-              "#{appsdk_path}/test/support/helpers/asserts/rally-custom-asserts.js"
-
-              # Mocks and helpers
-              "#{appsdk_path}/test/support/helpers/helpers.js"
-              "#{appsdk_path}/test/support/helpers/ext4-mocking.js"
-              "#{appsdk_path}/test/support/helpers/ext4-sinon.js"
-              "#{appsdk_path}/test/javascripts/support/helpers/**/*.js"
-              "#{appsdk_path}/test/javascripts/support/mock/**/*.js"
-              "#{appsdk_path}/test/support/data/types/**/*.js"
-
-              # 'btid' CSS classes for Testing
-              "#{appsdk_path}/browsertest/Test.js"
-              "#{appsdk_path}/browsertest/Overrides.js"
-
-              # Jasmine overrides
-              "#{appsdk_path}/test/support/jasmine/jasmine-html-overrides.js"
-
-              # Deft overrides
-              "#{appsdk_path}/test/support/deft/deft-overrides.js"
+      options:
+        specs: [
+          "test/gen/**/#{spec}Spec.js"
+        ]
+        helpers: [
+          "#{appsdk_path}/test/javascripts/helpers/**/*.js"
+        ]
+        vendor: (->
+          if process.env.APPSDK_PATH?
+            vendorPaths = [
+              "lib/ext/4.2.2/ext-all-debug.js"
+              "#{appsdk_path}/builds/sdk-dependencies.js"
+              "#{appsdk_path}/src/Ext-more.js"
             ]
-          )()
-          styles: [
-            "#{appsdk_path}/test/support/jasmine/rally-jasmine.css"
-            "#{appsdk_path}/builds/rui/resources/css/rui-all.css"
-            "#{appsdk_path}/builds/rui/resources/css/rui-fonts.css"
-            "#{appsdk_path}/builds/lib/closure/closure-20130117-r2446.css"
-            "#{appsdk_path}/builds/rui/resources/css/lib-closure.css"
-            'build/resources/css/catalog-all.css'
+          else
+            vendorPaths = ["#{appsdk_path}/builds/sdk.js"]
+
+          vendorPaths.concat [
+            "#{appsdk_path}/builds/lib/analytics/analytics-all.js"
+            "#{appsdk_path}/builds/lib/closure/closure-all.js"
+
+            # Enable Ext Loader
+            'test/support/ExtLoader.js'
+
+            # 3rd party libraries & customizations
+            "#{appsdk_path}/test/support/sinon/sinon-1.10.2.js"
+            "#{appsdk_path}/test/support/sinon/jasmine-sinon.js"
+            "#{appsdk_path}/test/support/sinon/rally-sinon-config.js"
+            "node_modules/immutable/dist/immutable.js"
+
+            # Setup
+            'lib/webdriver/webdriver.js'
+            "#{appsdk_path}/test/support/webdriver/error.js"
+
+            # Asserts
+            "#{appsdk_path}/test/support/helpers/asserts/rally-asserts.js"
+            "#{appsdk_path}/test/support/helpers/asserts/rally-custom-asserts.js"
+
+            # Mocks and helpers
+            "#{appsdk_path}/test/support/helpers/helpers.js"
+            "#{appsdk_path}/test/support/helpers/ext4-mocking.js"
+            "#{appsdk_path}/test/support/helpers/ext4-sinon.js"
+            "#{appsdk_path}/test/javascripts/support/helpers/**/*.js"
+            "#{appsdk_path}/test/javascripts/support/mock/**/*.js"
+            "#{appsdk_path}/test/support/data/types/**/*.js"
+
+            # 'btid' CSS classes for Testing
+            "#{appsdk_path}/browsertest/Test.js"
+            "#{appsdk_path}/browsertest/Overrides.js"
+
+            # Jasmine overrides
+            "#{appsdk_path}/test/support/jasmine/jasmine-html-overrides.js"
+
+            # Deft overrides
+            "#{appsdk_path}/test/support/deft/deft-overrides.js"
           ]
-          host: "http://127.0.0.1:#{inlinePort}/"
+        )()
+        styles: [
+          "#{appsdk_path}/test/support/jasmine/rally-jasmine.css"
+          "#{appsdk_path}/builds/rui/resources/css/rui-all.css"
+          "#{appsdk_path}/builds/rui/resources/css/rui-fonts.css"
+          "#{appsdk_path}/builds/lib/closure/closure-20130117-r2446.css"
+          "#{appsdk_path}/builds/rui/resources/css/lib-closure.css"
+          'build/resources/css/catalog-all.css'
+        ]
+        host: "http://127.0.0.1:#{inlinePort}/"
+      apps:  {}
+      appsp:
+        options:
+          specs: '<%= grunt.task.current.args[2] %>'
+          outfile: '<%= grunt.task.current.args[1] %>'
 
     replace:
       jasmine:
-        src: ['_SpecRunner.html']
+        src: ['_SpecRunner*.html']
         overwrite: true
         replacements: [
           from: '<script src=".grunt/grunt-contrib-jasmine/reporter.js"></script>'
@@ -324,7 +401,7 @@ module.exports = (grunt) ->
             'compile'
             "-classpath=#{appsdk_path}/builds/sdk-dependencies-debug.js,#{appsdk_path}/src,src/apps"
             'exclude -all and'
-            "union -r -file #{grunt.option('app')} and"
+            "union -r -file #{grunt.option('app')}/ and"
             "exclude -file #{appsdk_path}/builds/sdk-dependencies-debug.js and"
             "exclude -file #{appsdk_path}/src and"
             'exclude -namespace Ext and'
@@ -334,6 +411,14 @@ module.exports = (grunt) ->
     assemble:
       options:
         apps: 'src/apps/**/config.json'
+
+    rick:
+      'app-catalog':
+        url: 'almci/job/app-catalog-jobs'
+        job: 'app-catalog'
+      alm:
+        url: 'almci/job/alm-jobs'
+        job: 'alm'
 
   # Only recompile changed coffee files
   changedFiles = {}

@@ -6,10 +6,17 @@
         requires: [
             'Rally.ui.cardboard.plugin.FixedHeader',
             'Rally.ui.gridboard.GridBoard',
+            'Rally.ui.cardboard.CardBoard',
             'Rally.ui.gridboard.plugin.GridBoardCustomFilterControl',
             'Rally.ui.gridboard.plugin.GridBoardFieldPicker',
             'Rally.ui.gridboard.plugin.GridBoardAddNew',
-            'Rally.apps.taskboard.TaskBoardHeader'
+            'Rally.apps.taskboard.TaskBoardHeader',
+            'Rally.clientmetrics.ClientMetricsRecordable',
+            'Rally.data.Ranker',
+            'Ext.XTemplate'
+        ],
+        mixins: [
+            'Rally.clientmetrics.ClientMetricsRecordable'
         ],
         cls: 'taskboard',
         alias: 'widget.taskboardapp',
@@ -17,7 +24,6 @@
         scopeType: 'iteration',
         supportsUnscheduled: false,
         autoScroll: false,
-        layout: 'fit',
 
         config: {
             defaultSettings: {
@@ -42,7 +48,7 @@
                     load: this._onRowsLoaded,
                     scope: this
                 },
-                fetch: ['FormattedID']
+                fetch: ['FormattedID', 'Name', this._getRankField()]
             });
         },
 
@@ -64,8 +70,15 @@
             return fields;
         },
 
+        setSize: function() {
+            this.callParent(arguments);
+            if(this.rendered && this._getGridBoard()) {
+                this._getGridBoard().setHeight(this._getAvailableBoardHeight());
+            }
+        },
+
         _destroyGridBoard: function() {
-            var gridBoard = this.down('rallygridboard');
+            var gridBoard = this._getGridBoard();
             if (gridBoard) {
                 gridBoard.destroy();
             }
@@ -76,8 +89,13 @@
             this.add(this._getGridBoardConfig(store.getRange()));
         },
 
+        _getGridBoard: function() {
+            return this.down('rallygridboard');
+        },
+
         _getBoard: function () {
-            return this.down('rallygridboard').getGridOrBoard();
+            var gridBoard = this._getGridBoard();
+            return gridBoard && gridBoard.getGridOrBoard();
         },
 
         _getGridBoardConfig: function (rowRecords) {
@@ -87,10 +105,24 @@
                 xtype: 'rallygridboard',
                 stateful: false,
                 toggleState: 'board',
-                cardBoardConfig: this._getBoardConfig(rowRecords),
-                shouldDestroyTreeStore: this.getContext().isFeatureEnabled('S73617_GRIDBOARD_SHOULD_DESTROY_TREESTORE'),
+                cardBoardConfig: this._getBoardConfig(),
                 plugins: [
-                    'rallygridboardaddnew',
+                    {
+                        ptype:'rallygridboardaddnew',
+                        addNewControlConfig: {
+                            recordTypes: ['Task', 'Defect', 'Defect Suite', 'Test Set', 'User Story'],
+                            additionalFields: [this._createWorkProductComboBox(rowRecords)],
+                            listeners: {
+                                recordtypechange: this._onAddNewRecordTypeChange,
+                                create: this._onAddNewCreate,
+                                scope: this
+                            },
+                            minWidth: 600,
+                            ignoredRequiredFields: ['Name', 'Project', 'WorkProduct', 'State', 'TaskIndex', 'ScheduleState'],
+                            stateful: true,
+                            stateId: context.getScopedStateId('taskboard-add-new')
+                        }
+                    },
                     {
                         ptype: 'rallygridboardcustomfiltercontrol',
                         filterChildren: false,
@@ -111,7 +143,7 @@
                         headerPosition: 'left',
                         modelNames: modelNames,
                         boardFieldDefaults: ['Estimate', 'ToDo'],
-                        boardFieldBlackList: ['State']
+                        boardFieldBlackList: ['State', 'TaskIndex']
                     }
                 ],
                 context: context,
@@ -120,22 +152,25 @@
                     filters: this._getQueryFilters(false),
                     enableRankFieldParameterAutoMapping: false
                 },
-                addNewPluginConfig: {
-                    style: {
-                        'float': 'left'
-                    },
-                    recordTypes: ['Task', 'Defect', 'Defect Suite', 'Test Set', 'User Story'],
-                    additionalFields: [this._createWorkProductComboBox(rowRecords)],
-                    listeners: {
-                        recordtypechange: this._onAddNewRecordTypeChange,
-                        create: this._onAddNewCreate,
-                        scope: this
-                    },
-                    minWidth: 600,
-                    ignoredRequiredFields: ['Name', 'Project', 'WorkProduct', 'State', 'TaskIndex', 'ScheduleState']
-                },
-                height: this.getHeight()
+                height: this._getAvailableBoardHeight(),
+                listeners: {
+                    load: this._onLoad,
+                    scope: this
+                }
             };
+        },
+
+        _onLoad: function() {
+            this.recordComponentReady();
+        },
+
+        _getAvailableBoardHeight: function() {
+            var header = this.getHeader(),
+                availableHeight = this.getHeight();
+            if(header) {
+                availableHeight -= header.getHeight();
+            }
+            return availableHeight;
         },
 
         _getRankField: function() {
@@ -159,22 +194,36 @@
             this._workProductCombo = Ext.create('Rally.ui.combobox.ComboBox', {
                 displayField: 'FormattedID',
                 valueField: '_ref',
+                listConfig: {
+                    tpl: Ext.create('Ext.XTemplate',
+                        '<tpl for=".">',
+                        '<div class="' + Ext.baseCSSPrefix + 'boundlist-item">',
+                        '<tpl if="values._ref">{FormattedID}: </tpl>',
+                        '{Name:htmlEncode}',
+                        '</div>',
+                        '</tpl>'),
+                    maxWidth: 300
+                },
                 store: Ext.create('Ext.data.Store', {
                     data: _.invoke(rowRecords, 'getData'),
-                    fields: ['_ref', 'FormattedID']
+                    fields: ['_ref', 'FormattedID', 'Name']
                 }),
-                emptyText: 'Work Product',
+                emptyText: 'Parent',
                 defaultSelectionPosition: null,
                 allowBlank: false,
                 validateOnChange: false,
                 validateOnBlur: false,
                 name: 'WorkProduct',
-                itemId: 'workProduct'
+                itemId: 'workProduct',
+                editable: true,
+                typeAhead: true,
+                queryMode: 'local',
+                minChars: 0
             });
             return this._workProductCombo;
         },
 
-        _getBoardConfig: function (rowRecords) {
+        _getBoardConfig: function () {
             return {
                 xtype: 'rallycardboard',
                 attribute: 'State',
@@ -190,10 +239,11 @@
                             direction: 'ASC'
                         }
                     ],
-                    values: _.pluck(rowRecords, 'data'),
                     headerConfig: {
                         xtype: 'rallytaskboardrowheader'
-                    }
+                    },
+                    sortField: this._getRankField(),
+                    enableCrossRowDragging: false
                 },
                 margin: '10px 0 0 0',
                 plugins: [{ptype:'rallyfixedheadercardboard'}]
